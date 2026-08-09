@@ -6,12 +6,13 @@ async function searchNeptronics(query) {
   }
 
   try {
-    const url =
+    // Search Neptronics public product catalog
+    const searchUrl =
       "https://neptronics.com/shop/?s=" +
       encodeURIComponent(searchTerm) +
       "&post_type=product";
 
-    const response = await fetch(url, {
+    const response = await fetch(searchUrl, {
       headers: {
         "User-Agent": "PriceFinderNepal/1.0"
       }
@@ -19,7 +20,7 @@ async function searchNeptronics(query) {
 
     if (!response.ok) {
       console.log(
-        "Neptronics returned status:",
+        "Neptronics search status:",
         response.status
       );
 
@@ -28,91 +29,213 @@ async function searchNeptronics(query) {
 
     const html = await response.text();
 
-    const results = [];
-
-    /*
-     * Neptronics uses WooCommerce-style product
-     * pages. We look for product links and then
-     * extract the visible product name and price.
-     */
-
-    const productLinks = [
+    // Find product URLs
+    const matches = [
       ...html.matchAll(
-        /<a[^>]+href=["']([^"']*\/product\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi
+        /href=["']([^"']*\/product\/[^"']+)["']/gi
       )
     ];
 
+    const productUrls = [];
     const seen = new Set();
 
-    for (const match of productLinks) {
-      const productUrl = match[1];
-      const linkContent = match[2];
+    for (const match of matches) {
+      let productUrl = match[1];
 
-      const cleanText = linkContent
-        .replace(/<[^>]*>/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/&#8377;/gi, "Rs.")
-        .replace(/&#x20B9;/gi, "Rs.")
-        .replace(/\s+/g, " ")
-        .trim();
+      // Decode HTML entities
+      productUrl = productUrl
+        .replace(/&amp;/g, "&");
 
-      if (!cleanText) {
-        continue;
+      // Make absolute URL
+      if (!productUrl.startsWith("http")) {
+        productUrl =
+          "https://neptronics.com" +
+          productUrl;
       }
 
-      const lowerName = cleanText.toLowerCase();
-      const lowerQuery = searchTerm.toLowerCase();
-
-      if (!lowerName.includes(lowerQuery)) {
-        continue;
+      if (!seen.has(productUrl)) {
+        seen.add(productUrl);
+        productUrls.push(productUrl);
       }
+    }
 
-      if (seen.has(productUrl)) {
-        continue;
-      }
+    const results = [];
 
-      seen.add(productUrl);
+    // Limit requests so we don't hit the site with
+    // too many requests at once.
+    const limitedUrls =
+      productUrls.slice(0, 10);
 
-      /*
-       * Try to find a rupee price near the product.
-       */
+    for (const productUrl of limitedUrls) {
 
-      const priceMatch = cleanText.match(
-        /(?:₨|Rs\.?|रु\.?)\s*[\d,]+(?:\.\d{1,2})?/i
-      );
+      try {
 
-      let price = null;
-
-      if (priceMatch) {
-        price = Number(
-          priceMatch[0]
-            .replace(/[^\d.]/g, "")
+        const productResponse = await fetch(
+          productUrl,
+          {
+            headers: {
+              "User-Agent": "PriceFinderNepal/1.0"
+            }
+          }
         );
+
+        if (!productResponse.ok) {
+          continue;
+        }
+
+        const productHtml =
+          await productResponse.text();
+
+        // ------------------------------------------
+        // PRODUCT NAME
+        // ------------------------------------------
+
+        let name = "";
+
+        const titleMatch =
+          productHtml.match(
+            /<h1[^>]*class=["'][^"']*product_title[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i
+          );
+
+        if (titleMatch) {
+          name = cleanText(titleMatch[1]);
+        }
+
+        // Fallback to page title
+        if (!name) {
+
+          const pageTitle =
+            productHtml.match(
+              /<title[^>]*>([\s\S]*?)<\/title>/i
+            );
+
+          if (pageTitle) {
+            name = cleanText(
+              pageTitle[1]
+                .replace(/\s*[-|].*$/, "")
+            );
+          }
+        }
+
+        if (!name) {
+          continue;
+        }
+
+        // ------------------------------------------
+        // CHECK SEARCH TERM
+        // ------------------------------------------
+
+        const nameLower =
+          name.toLowerCase();
+
+        const queryLower =
+          searchTerm.toLowerCase();
+
+        if (!nameLower.includes(queryLower)) {
+          continue;
+        }
+
+        // ------------------------------------------
+        // PRICE
+        // ------------------------------------------
+
+        let price = null;
+
+        // WooCommerce price section
+        const priceSection =
+          productHtml.match(
+            /<p[^>]*class=["'][^"']*\bprice\b[^"']*["'][^>]*>([\s\S]*?)<\/p>/i
+          );
+
+        if (priceSection) {
+
+          const prices =
+            extractPrices(
+              priceSection[1]
+            );
+
+          if (prices.length > 0) {
+            // Last price is normally the current
+            // sale price when both old and new
+            // prices are shown.
+            price =
+              prices[prices.length - 1];
+          }
+        }
+
+        // Fallback: search the product page
+        if (price === null) {
+
+          const prices =
+            extractPrices(productHtml);
+
+          if (prices.length > 0) {
+
+            // Prefer the first reasonable price.
+            price = prices[0];
+          }
+        }
+
+        // ------------------------------------------
+        // AVAILABILITY
+        // ------------------------------------------
+
+        let availability =
+          "Available";
+
+        if (
+          /out[-\s]?of[-\s]?stock/i.test(
+            productHtml
+          )
+        ) {
+          availability =
+            "Out of stock";
+        }
+
+        // ------------------------------------------
+        // RESULT
+        // ------------------------------------------
+
+        results.push({
+
+          name: name,
+
+          store: "Neptronics",
+
+          price: price,
+
+          shipping: 0,
+
+          total:
+            price !== null
+              ? price
+              : null,
+
+          availability:
+            availability,
+
+          url: productUrl,
+
+          source: "Neptronics",
+
+          lastUpdated:
+            new Date().toISOString()
+
+        });
+
+      } catch (productError) {
+
+        console.log(
+          "Neptronics product error:",
+          productError.message
+        );
+
       }
 
-      const name = cleanText
-        .replace(
-          /(?:₨|Rs\.?|रु\.?)\s*[\d,]+(?:\.\d{1,2})?/gi,
-          ""
-        )
-        .trim();
-
-      results.push({
-        name: name || cleanText,
-        store: "Neptronics",
-        price: price,
-        shipping: 0,
-        total: price,
-        url: productUrl.startsWith("http")
-          ? productUrl
-          : "https://neptronics.com" + productUrl,
-        source: "Neptronics",
-        lastUpdated: new Date().toISOString()
-      });
     }
 
     console.log(
-      `Neptronics: found ${results.length} result(s) for "${searchTerm}"`
+      `Neptronics: ${results.length} result(s) for "${searchTerm}"`
     );
 
     return results;
@@ -127,5 +250,73 @@ async function searchNeptronics(query) {
     return [];
   }
 }
+
+
+// ==========================================
+// CLEAN HTML TEXT
+// ==========================================
+
+function cleanText(text) {
+
+  return text
+
+    .replace(/<[^>]*>/g, " ")
+
+    .replace(/&nbsp;/gi, " ")
+
+    .replace(/&amp;/gi, "&")
+
+    .replace(/&#8377;/gi, "₨")
+
+    .replace(/&#x20B9;/gi, "₨")
+
+    .replace(/&#8211;/gi, "-")
+
+    .replace(/&#8212;/gi, "-")
+
+    .replace(/\s+/g, " ")
+
+    .trim();
+}
+
+
+// ==========================================
+// EXTRACT NEPALI/RUPEE PRICES
+// ==========================================
+
+function extractPrices(html) {
+
+  const text =
+    cleanText(html);
+
+  const matches = text.match(
+    /(?:₨|Rs\.?|रु\.?)\s*[\d,]+(?:\.\d{1,2})?/gi
+  );
+
+  if (!matches) {
+    return [];
+  }
+
+  return matches
+
+    .map(priceText => {
+
+      const number =
+        priceText.replace(
+          /[^\d.]/g,
+          ""
+        );
+
+      return Number(number);
+
+    })
+
+    .filter(price =>
+      Number.isFinite(price) &&
+      price > 0
+    );
+
+}
+
 
 module.exports = searchNeptronics;
