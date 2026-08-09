@@ -16,6 +16,7 @@ const searchITMonster =
 
 const searchXiaomiNepal =
   require("./stores/xiaominepal");
+const searchSamsung = require("./stores/samsung");
 
 
 const app = express();
@@ -90,6 +91,10 @@ registerStore(
   "Xiaomi Nepal",
   searchXiaomiNepal
 );
+registerStore(
+  "Samsung Nepal",
+  searchSamsung
+);
 
 
 // ============================================================
@@ -111,7 +116,8 @@ app.get(
         "Neptronics",
         "Bigbyte IT World",
         "IT Monster",
-        "Xiaomi Nepal"
+        "Xiaomi Nepal",
+        "Samsung Nepal"
       ]
 
     });
