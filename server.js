@@ -13,6 +13,7 @@ const searchMudita =
   require("./stores/mudita");
 const searchEvoStore = require("./stores/evostore");
 const searchITMonster = require("./stores/itmonster");
+const searchThulo = require("./stores/thulo");
 
 const app = express();
 
@@ -76,6 +77,10 @@ registerStore(
   "IT Monster",
   searchITMonster
 );
+registerStore(
+  "Thulo",
+  searchThulo
+);
 
 // ==========================================
 // HOME / STATUregisterStore(
@@ -92,7 +97,8 @@ app.get("/", (req, res) => {
   "Oliz Store",
       "Mudita Store",
       "EvoStore",
-      "IT Monster"
+      "IT Monster",
+      "Thulo"
       
     ]
   });
