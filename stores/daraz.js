@@ -5,11 +5,11 @@ async function searchDaraz(searchTerm) {
   console.log(`Daraz: searching for "${searchTerm}"`);
 
   const results = [];
+  const seen = new Set();
 
   try {
     const url =
-      "https://www.daraz.com.np/catalog/?q=" +
-      encodeURIComponent(searchTerm);
+      `https://www.daraz.com.np/catalog/?q=${encodeURIComponent(searchTerm)}`;
 
     console.log(`Daraz URL: ${url}`);
 
@@ -21,10 +21,11 @@ async function searchDaraz(searchTerm) {
         Accept:
           "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
         "Accept-Language": "en-US,en;q=0.9",
-        Referer: "https://www.daraz.com.np/"
+        Referer: "https://www.daraz.com.np/",
+        Connection: "keep-alive"
       },
-      timeout: 20000,
-      maxRedirects: 5
+      timeout: 30000,
+      maxRedirects: 10
     });
 
     console.log(`Daraz status: ${response.status}`);
@@ -32,7 +33,7 @@ async function searchDaraz(searchTerm) {
     const html = response.data;
 
     if (!html || typeof html !== "string") {
-      console.log("Daraz: invalid response");
+      console.log("Daraz: empty/invalid response");
       return [];
     }
 
@@ -40,288 +41,423 @@ async function searchDaraz(searchTerm) {
 
     const $ = cheerio.load(html);
 
-    /*
-     * Daraz pages can contain product information inside
-     * embedded JSON rather than normal HTML product cards.
-     */
+    const searchLower = String(searchTerm).toLowerCase().trim();
 
-    const seen = new Set();
+    function cleanText(value) {
+      return String(value || "")
+        .replace(/\\u002F/g, "/")
+        .replace(/\\u0026/g, "&")
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
 
-    function addProduct(product) {
-      if (!product || typeof product !== "object") return;
+    function parsePrice(value) {
+      if (value === null || value === undefined) return null;
 
-      const name =
+      const text = String(value)
+        .replace(/NPR/gi, "")
+        .replace(/Rs\.?/gi, "")
+        .replace(/रु\.?/gi, "")
+        .replace(/,/g, "")
+        .trim();
+
+      const match = text.match(/\d+(?:\.\d+)?/);
+
+      if (!match) return null;
+
+      const price = Number(match[0]);
+
+      if (!Number.isFinite(price) || price <= 0) {
+        return null;
+      }
+
+      return price;
+    }
+
+    function absoluteUrl(value) {
+      if (!value) return "";
+
+      let result = cleanText(value);
+
+      if (result.startsWith("//")) {
+        return "https:" + result;
+      }
+
+      if (result.startsWith("/")) {
+        return "https://www.daraz.com.np" + result;
+      }
+
+      return result;
+    }
+
+    function addResult(product) {
+      if (!product) return;
+
+      const name = cleanText(
         product.name ||
         product.title ||
-        product.productName ||
-        product.itemTitle;
+        product.itemTitle ||
+        product.productName
+      );
 
       if (!name) return;
 
-      const lowerName = String(name).toLowerCase();
-      const lowerSearch = String(searchTerm).toLowerCase();
-
-      if (!lowerName.includes(lowerSearch)) {
+      /*
+       * Only return products matching the user's search.
+       */
+      if (!name.toLowerCase().includes(searchLower)) {
         return;
       }
 
-      let price =
+      const price = parsePrice(
         product.price ??
         product.salePrice ??
         product.currentPrice ??
-        product.priceShow ??
-        product.priceText;
+        product.priceShow
+      );
 
-      if (typeof price === "string") {
-        price = price.replace(/[^\d.]/g, "");
-      }
-
-      price = Number(price);
-
-      if (!Number.isFinite(price) || price <= 0) {
+      if (!price) {
         return;
       }
 
-      const productUrl =
+      const productUrl = absoluteUrl(
         product.url ||
         product.productUrl ||
         product.itemUrl ||
-        product.link;
+        product.link
+      );
 
-      const image =
+      const image = absoluteUrl(
         product.image ||
         product.imageUrl ||
         product.pic ||
-        product.mainImage ||
-        product.imageUrlDefault;
+        product.mainImage
+      );
 
-      const finalUrl = productUrl
-        ? productUrl.startsWith("http")
-          ? productUrl
-          : `https://www.daraz.com.np${productUrl}`
-        : "";
+      const key = `${name}|${price}|${productUrl}`;
 
-      const key = `${name}|${price}|${finalUrl}`;
-
-      if (seen.has(key)) return;
+      if (seen.has(key)) {
+        return;
+      }
 
       seen.add(key);
 
       results.push({
-        name: String(name).trim(),
+        name,
         store: "Daraz",
         price,
         shipping: 0,
         total: price,
         availability: "Check store",
-        url: finalUrl,
+        url: productUrl,
         image: image || null,
         source: "Daraz",
         lastUpdated: new Date().toISOString()
       });
+
+      console.log(
+        `Daraz product found: ${name} | NPR ${price}`
+      );
     }
 
     /*
-     * Method 1:
-     * Look through script tags containing product JSON.
+     * ---------------------------------------------------------
+     * METHOD 1: Extract product objects from page source
+     * ---------------------------------------------------------
+     */
+
+    const source = html;
+
+    /*
+     * Daraz frequently stores product information in escaped
+     * JSON inside script tags.
+     */
+
+    const jsonPatterns = [
+      /"itemTitle"\s*:\s*"([^"]+)"/g,
+      /"productName"\s*:\s*"([^"]+)"/g,
+      /"title"\s*:\s*"([^"]+)"/g
+    ];
+
+    /*
+     * Search for product-like JSON objects.
+     */
+
+    const objectRegex =
+      /\{(?:[^{}"]|"[^"]*"|\{[^{}]*\}){0,3000}(?:"itemTitle"|"productName"|"priceShow"|"salePrice"|"productUrl")(?:[^{}"]|"[^"]*"|\{[^{}]*\}){0,3000}\}/g;
+
+    const objectMatches = source.match(objectRegex) || [];
+
+    console.log(
+      `Daraz: found ${objectMatches.length} possible embedded product objects`
+    );
+
+    for (const rawObject of objectMatches) {
+      try {
+        const text = rawObject
+          .replace(/\\"/g, '"')
+          .replace(/\\\\/g, "\\");
+
+        const nameMatch = text.match(
+          /"(?:itemTitle|productName|name|title)"\s*:\s*"([^"]+)"/i
+        );
+
+        const priceMatch = text.match(
+          /"(?:priceShow|salePrice|currentPrice|price)"\s*:\s*"?([\d,.]+)"?/i
+        );
+
+        const urlMatch = text.match(
+          /"(?:productUrl|itemUrl|url|link)"\s*:\s*"([^"]+)"/i
+        );
+
+        const imageMatch = text.match(
+          /"(?:imageUrl|image|pic|mainImage)"\s*:\s*"([^"]+)"/i
+        );
+
+        if (nameMatch) {
+          addResult({
+            name: nameMatch[1],
+            price: priceMatch ? priceMatch[1] : null,
+            url: urlMatch ? urlMatch[1] : "",
+            image: imageMatch ? imageMatch[1] : ""
+          });
+        }
+      } catch (error) {
+        // Ignore malformed object
+      }
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * METHOD 2: Parse script tags containing JSON
+     * ---------------------------------------------------------
      */
 
     $("script").each((index, element) => {
-      const text = $(element).html();
+      const scriptText = $(element).html();
 
-      if (!text) return;
+      if (!scriptText) return;
 
       if (
-        !text.includes("product") &&
-        !text.includes("itemTitle") &&
-        !text.includes("priceShow")
+        !scriptText.includes("itemTitle") &&
+        !scriptText.includes("priceShow") &&
+        !scriptText.includes("productUrl") &&
+        !scriptText.includes("salePrice")
       ) {
         return;
       }
 
       /*
-       * Extract common Daraz JSON structures.
+       * Extract product names, prices, URLs and images using
+       * nearby JSON fields.
        */
 
-      const patterns = [
-        /"itemTitle"\s*:\s*"([^"]+)"/g,
-        /"name"\s*:\s*"([^"]+)"/g
+      const names = [
+        ...scriptText.matchAll(
+          /"(?:itemTitle|productName|productTitle)"\s*:\s*"([^"]+)"/gi
+        )
       ];
 
-      /*
-       * Search JSON-like objects.
-       */
+      for (const match of names) {
+        const name = cleanText(match[1]);
 
-      const objectMatches = text.match(
-        /\{[^{}]{0,5000}(?:itemTitle|priceShow|productUrl|salePrice)[^{}]{0,5000}\}/g
-      );
-
-      if (objectMatches) {
-        for (const objectText of objectMatches) {
-          try {
-            const normalized = objectText
-              .replace(/\\"/g, '"')
-              .replace(/\\'/g, "'");
-
-            const nameMatch = normalized.match(
-              /"(?:itemTitle|name|title|productName)"\s*:\s*"([^"]+)"/i
-            );
-
-            const priceMatch = normalized.match(
-              /"(?:priceShow|salePrice|price|currentPrice)"\s*:\s*"?([\d,.]+)/i
-            );
-
-            const urlMatch = normalized.match(
-              /"(?:productUrl|url|itemUrl|link)"\s*:\s*"([^"]+)"/i
-            );
-
-            const imageMatch = normalized.match(
-              /"(?:image|imageUrl|pic|mainImage)"\s*:\s*"([^"]+)"/i
-            );
-
-            if (nameMatch) {
-              addProduct({
-                name: nameMatch[1],
-                price: priceMatch ? priceMatch[1] : null,
-                url: urlMatch ? urlMatch[1] : "",
-                image: imageMatch ? imageMatch[1] : null
-              });
-            }
-          } catch (error) {
-            // Ignore malformed embedded objects
-          }
+        if (!name.toLowerCase().includes(searchLower)) {
+          continue;
         }
-      }
 
-      /*
-       * Try parsing complete JSON scripts.
-       */
+        /*
+         * Look around the product name for a price.
+         */
 
-      try {
-        const trimmed = text.trim();
+        const position = match.index || 0;
 
-        if (
-          trimmed.startsWith("{") ||
-          trimmed.startsWith("[")
-        ) {
-          const json = JSON.parse(trimmed);
+        const nearby = scriptText.slice(
+          Math.max(0, position - 2500),
+          Math.min(scriptText.length, position + 5000)
+        );
 
-          function walk(value) {
-            if (!value) return;
+        const priceMatch = nearby.match(
+          /"(?:priceShow|salePrice|currentPrice|price)"\s*:\s*"?([\d,.]+)"?/i
+        );
 
-            if (Array.isArray(value)) {
-              for (const item of value) {
-                walk(item);
-              }
-              return;
-            }
+        const urlMatch = nearby.match(
+          /"(?:productUrl|itemUrl|productUrlKey)"\s*:\s*"([^"]+)"/i
+        );
 
-            if (typeof value !== "object") return;
+        const imageMatch = nearby.match(
+          /"(?:imageUrl|image|pic)"\s*:\s*"([^"]+)"/i
+        );
 
-            if (
-              value.itemTitle ||
-              value.productName ||
-              value.priceShow ||
-              value.salePrice ||
-              value.productUrl
-            ) {
-              addProduct(value);
-            }
-
-            for (const key of Object.keys(value)) {
-              const child = value[key];
-
-              if (
-                typeof child === "object" &&
-                child !== null
-              ) {
-                walk(child);
-              }
-            }
-          }
-
-          walk(json);
-        }
-      } catch (error) {
-        // Script is not standalone JSON; continue.
+        addResult({
+          name,
+          price: priceMatch ? priceMatch[1] : null,
+          url: urlMatch ? urlMatch[1] : "",
+          image: imageMatch ? imageMatch[1] : ""
+        });
       }
     });
 
     /*
-     * Method 2:
-     * Search normal HTML links/cards.
+     * ---------------------------------------------------------
+     * METHOD 3: Normal HTML product cards
+     * ---------------------------------------------------------
      */
 
-    $("a").each((index, element) => {
+    const possibleCards = $(
+      '[data-qa-locator="product-item"], ' +
+      '[class*="Bm3ON"], ' +
+      '[class*="product"], ' +
+      '[class*="item"]'
+    );
+
+    console.log(
+      `Daraz: found ${possibleCards.length} possible HTML product cards`
+    );
+
+    possibleCards.each((index, element) => {
+      try {
+        const card = $(element);
+
+        const cardText = cleanText(card.text());
+
+        if (!cardText.toLowerCase().includes(searchLower)) {
+          return;
+        }
+
+        /*
+         * Find product title.
+         */
+
+        let name = "";
+
+        const titleElement = card.find(
+          '[title], ' +
+          '[class*="title"], ' +
+          '[class*="name"], ' +
+          'a'
+        ).first();
+
+        if (titleElement.length) {
+          name =
+            titleElement.attr("title") ||
+            titleElement.text();
+        }
+
+        name = cleanText(name);
+
+        if (!name || !name.toLowerCase().includes(searchLower)) {
+          return;
+        }
+
+        /*
+         * Find price.
+         */
+
+        const priceElement = card.find(
+          '[class*="price"], ' +
+          '[data-qa-locator*="price"]'
+        ).first();
+
+        let priceText = priceElement.text();
+
+        if (!priceText) {
+          priceText = cardText;
+        }
+
+        const price = parsePrice(priceText);
+
+        if (!price) {
+          return;
+        }
+
+        /*
+         * Find product URL.
+         */
+
+        const link = card.find("a[href]").first();
+
+        const productUrl = link.length
+          ? link.attr("href")
+          : "";
+
+        /*
+         * Find image.
+         */
+
+        const imageElement = card.find("img").first();
+
+        const image =
+          imageElement.attr("src") ||
+          imageElement.attr("data-src") ||
+          imageElement.attr("data-original") ||
+          "";
+
+        addResult({
+          name,
+          price,
+          url: productUrl,
+          image
+        });
+      } catch (error) {
+        // Ignore individual card errors.
+      }
+    });
+
+    /*
+     * ---------------------------------------------------------
+     * METHOD 4: Extract product URLs from HTML
+     * ---------------------------------------------------------
+     */
+
+    const productLinks = new Set();
+
+    $("a[href]").each((index, element) => {
       const href = $(element).attr("href");
 
       if (!href) return;
 
-      const text = $(element)
-        .text()
-        .replace(/\s+/g, " ")
-        .trim();
+      const absolute = absoluteUrl(href);
 
-      if (!text) return;
+      /*
+       * Daraz product URLs commonly contain "-i".
+       */
 
-      const lowerText = text.toLowerCase();
-      const lowerSearch = String(searchTerm).toLowerCase();
-
-      if (!lowerText.includes(lowerSearch)) {
-        return;
+      if (
+        absolute.includes("daraz.com.np/products/") ||
+        /-i\d+\.html/i.test(absolute)
+      ) {
+        productLinks.add(absolute);
       }
-
-      if (!href.includes("i")) {
-        return;
-      }
-
-      const card = $(element).closest(
-        '[class*="product"], [class*="item"], [data-qa-locator]'
-      );
-
-      const cardText = card.length
-        ? card.text().replace(/\s+/g, " ")
-        : text;
-
-      const priceMatch = cardText.match(
-        /(?:Rs\.?|NPR|रु\.?)?\s*([\d,]+(?:\.\d{1,2})?)/i
-      );
-
-      if (!priceMatch) return;
-
-      const price = Number(
-        priceMatch[1].replace(/,/g, "")
-      );
-
-      if (!Number.isFinite(price) || price <= 0) {
-        return;
-      }
-
-      let image = null;
-
-      if (card.length) {
-        const img = card.find("img").first();
-
-        image =
-          img.attr("src") ||
-          img.attr("data-src") ||
-          img.attr("data-original") ||
-          null;
-      }
-
-      addProduct({
-        name: text,
-        price,
-        url: href,
-        image
-      });
     });
 
     console.log(
-      `Daraz: returning ${results.length} results for "${searchTerm}"`
+      `Daraz: found ${productLinks.size} possible product URLs`
     );
 
-    return results.slice(0, 20);
+    /*
+     * ---------------------------------------------------------
+     * Final cleanup
+     * ---------------------------------------------------------
+     */
+
+    const finalResults = results
+      .filter((item) => {
+        return (
+          item &&
+          item.name &&
+          Number.isFinite(item.price) &&
+          item.price > 0
+        );
+      })
+      .slice(0, 20);
+
+    console.log(
+      `Daraz: returning ${finalResults.length} results for "${searchTerm}"`
+    );
+
+    return finalResults;
   } catch (error) {
     console.error(
       `Daraz search error: ${error.message}`
