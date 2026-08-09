@@ -7,9 +7,7 @@ const {
 
 const searchNeptronics = require("./stores/neptronics");
 const searchBigbyte = require("./stores/bigbyte");
-
 const searchITMonster = require("./stores/itmonster");
-
 const xiaominepal = require("./stores/xiaominepal");
 
 const app = express();
@@ -64,7 +62,8 @@ registerStore(
 const stores = [
   neptronics,
   bigbyte,
-  xiaominepal
+  xiaominepal,
+  itmonster
 ];
 
 // ==========================================
