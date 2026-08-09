@@ -1,40 +1,297 @@
-// ============================================================
-// NEPTRONICS STORE SEARCH
-// ============================================================
+const fetch = require("node-fetch");
+const cheerio = require("cheerio");
+
+const BASE_URL = "https://neptronics.com.np";
 
 async function searchNeptronics(query) {
-  const searchTerm = String(query || "").trim();
-
-  if (!searchTerm) {
-    return [];
-  }
-
   try {
-    // --------------------------------------------------------
-    // SEARCH NEPTRONICS
-    // --------------------------------------------------------
+    console.log(`Neptronics: searching for "${query}"`);
 
     const searchUrl =
-      "https://neptronics.com/shop/?s=" +
-      encodeURIComponent(searchTerm) +
-      "&post_type=product";
-
-    console.log(
-      `Neptronics: searching for "${searchTerm}"`
-    );
+      `${BASE_URL}/?s=${encodeURIComponent(query)}&post_type=product`;
 
     const response = await fetch(searchUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-
         "Accept":
-          "text/html,application/xhtml+xml"
-      }
+          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language":
+          "en-US,en;q=0.9"
+      },
+      timeout: 15000
     });
 
+    console.log(
+      `Neptronics search status: ${response.status}`
+    );
+
     if (!response.ok) {
+      throw new Error(
+        `Neptronics search returned ${response.status}`
+      );
+    }
+
+    const html = await response.text();
+
+    console.log(
+      `Neptronics: received ${html.length} characters`
+    );
+
+    const $ = cheerio.load(html);
+
+    const products = [];
+
+    /*
+     * Try several common WooCommerce product selectors.
+     * This makes the scraper less dependent on one exact
+     * HTML class name.
+     */
+
+    const selectors = [
+      "li.product",
+      ".product",
+      ".type-product",
+      ".products .product",
+      ".product-grid-item",
+      ".product-item"
+    ];
+
+    const seen = new Set();
+
+    for (const selector of selectors) {
+
+      $(selector).each((index, element) => {
+
+        const el = $(element);
+
+        const link =
+          el.find("a").first().attr("href") ||
+          el.attr("href");
+
+        if (!link) return;
+
+        const url =
+          link.startsWith("http")
+            ? link
+            : new URL(link, BASE_URL).href;
+
+        if (seen.has(url)) return;
+
+        const name =
+          el.find(
+            ".woocommerce-loop-product__title, " +
+            ".product-title, " +
+            ".woocommerce-loop-product__title a, " +
+            "h2, h3"
+          )
+          .first()
+          .text()
+          .trim();
+
+        const priceText =
+          el.find(
+            ".price, " +
+            ".woocommerce-Price-amount, " +
+            ".amount"
+          )
+          .first()
+          .text()
+          .trim();
+
+        const price = parsePrice(priceText);
+
+        if (
+          name &&
+          price > 0
+        ) {
+          seen.add(url);
+
+          products.push({
+            name,
+            price,
+            shipping: 0,
+            total: price,
+            store: "Neptronics",
+            availability: "Check store",
+            url
+          });
+        }
+      });
+
+      if (products.length >= 10) {
+        break;
+      }
+    }
+
+    /*
+     * Fallback: collect product links and visit individual
+     * product pages if listing cards did not contain prices.
+     */
+
+    if (products.length === 0) {
+
+      const links = [];
+
+      $("a[href]").each((index, element) => {
+
+        const href =
+          $(element).attr("href");
+
+        if (!href) return;
+
+        const url =
+          href.startsWith("http")
+            ? href
+            : new URL(href, BASE_URL).href;
+
+        if (
+          url.includes("/product/") &&
+          !links.includes(url)
+        ) {
+          links.push(url);
+        }
+      });
+
       console.log(
+        `Neptronics: found ${links.length} product links`
+      );
+
+      for (
+        const url of links.slice(0, 10)
+      ) {
+
+        try {
+
+          const productResponse =
+            await fetch(url, {
+              headers: {
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36"
+              },
+              timeout: 15000
+            });
+
+          if (!productResponse.ok) {
+            console.log(
+              `Neptronics product status ${productResponse.status}: ${url}`
+            );
+            continue;
+          }
+
+          const productHtml =
+            await productResponse.text();
+
+          const page =
+            cheerio.load(productHtml);
+
+          const name =
+            page(
+              "h1.product_title, " +
+              "h1.entry-title, " +
+              "h1"
+            )
+            .first()
+            .text()
+            .trim();
+
+          const priceText =
+            page(
+              ".summary .price, " +
+              ".woocommerce-Price-amount, " +
+              "p.price, " +
+              ".price"
+            )
+            .first()
+            .text()
+            .trim();
+
+          const price =
+            parsePrice(priceText);
+
+          if (
+            name &&
+            price > 0
+          ) {
+
+            products.push({
+              name,
+              price,
+              shipping: 0,
+              total: price,
+              store: "Neptronics",
+              availability: "Check store",
+              url
+            });
+
+          }
+
+        } catch (error) {
+
+          console.log(
+            `Neptronics product error: ${error.message}`
+          );
+
+        }
+      }
+    }
+
+    console.log(
+      `Neptronics: returning ${products.length} results for "${query}"`
+    );
+
+    return products;
+
+  } catch (error) {
+
+    console.error(
+      "Neptronics search error:",
+      error.message
+    );
+
+    return [];
+  }
+}
+
+
+function parsePrice(text) {
+
+  if (!text) return 0;
+
+  const cleaned =
+    String(text)
+      .replace(/,/g, "")
+      .replace(/[^\d.]/g, " ");
+
+  const matches =
+    cleaned.match(/\d+(?:\.\d+)?/g);
+
+  if (!matches || !matches.length) {
+    return 0;
+  }
+
+  /*
+   * Use the first sensible price.
+   */
+
+  for (const value of matches) {
+
+    const number =
+      Number(value);
+
+    if (
+      Number.isFinite(number) &&
+      number > 0
+    ) {
+      return number;
+    }
+  }
+
+  return 0;
+}
+
+
+module.exports = searchNeptronics;      console.log(
         "Neptronics search status:",
         response.status
       );
