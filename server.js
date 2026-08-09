@@ -71,7 +71,7 @@ const stores = [
   {
     name: "Xiaomi Nepal",
     search: searchXiaomiNepal
-  }
+  },
   {
     name: "IT Monster World",
     search: searchITMonster
