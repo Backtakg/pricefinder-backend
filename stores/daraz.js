@@ -1,22 +1,6 @@
-```javascript
 const BASE_URL = "https://www.daraz.com.np";
 
-const HEADERS = {
-  "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  Accept:
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-  "Accept-Language": "en-US,en;q=0.9",
-  "Cache-Control": "no-cache"
-};
-
-
-/* ============================================================
-   DARAZ SEARCH
-   ============================================================ */
-
 async function searchDaraz(query) {
-
   const searchTerm = String(query || "").trim();
 
   if (!searchTerm) {
@@ -25,221 +9,185 @@ async function searchDaraz(query) {
 
   console.log(`Daraz: searching for "${searchTerm}"`);
 
+  const url =
+    `${BASE_URL}/catalog/?q=${encodeURIComponent(searchTerm)}`;
+
+  console.log(`Daraz URL: ${url}`);
+
   try {
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+        "Accept":
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+      },
+      signal: AbortSignal.timeout(25000)
+    });
 
-    /*
-     * Daraz search pages use:
-     *
-     * https://www.daraz.com.np/catalog/?q=iphone
-     *
-     * This is preferable to crawling the entire Daraz website.
-     */
-
-    const searchUrl =
-      `${BASE_URL}/catalog/?q=${encodeURIComponent(searchTerm)}`;
-
-    console.log(`Daraz URL: ${searchUrl}`);
-
-    const response =
-      await fetchWithTimeout(searchUrl);
-
-    console.log(
-      `Daraz search status: ${response.status}`
-    );
+    console.log(`Daraz status: ${response.status}`);
 
     if (!response.ok) {
-
       console.log(
-        `Daraz search failed with status ${response.status}`
+        `Daraz search failed: HTTP ${response.status}`
       );
-
       return [];
-
     }
 
-    const html =
-      await response.text();
+    const html = await response.text();
 
     console.log(
       `Daraz: received ${html.length} characters`
     );
 
+    const results = [];
 
-    /*
-     * Daraz is a dynamic marketplace.
-     * Product information may appear in:
-     *
-     * 1. JSON embedded in the page
-     * 2. JSON-LD
-     * 3. Normal HTML
-     *
-     * We try all three.
-     */
+    extractJsonLd(html, searchTerm, results);
+    extractEmbeddedData(html, searchTerm, results);
+    extractHtmlProducts(html, searchTerm, results);
 
-    const products =
-      extractProductsFromPage(
-        html,
-        searchTerm
-      );
-
+    const unique = removeDuplicates(results);
 
     console.log(
-      `Daraz: extracted ${products.length} matching products`
+      `Daraz: returning ${unique.length} results for "${searchTerm}"`
     );
 
-
-    /*
-     * Remove duplicates.
-     */
-
-    const unique =
-      removeDuplicates(products);
-
-
-    /*
-     * Limit results so one Daraz search does not
-     * overwhelm the other stores.
-     */
-
-    const results =
-      unique.slice(0, 30);
-
-
-    console.log(
-      `Daraz: returning ${results.length} results for "${searchTerm}"`
-    );
-
-
-    return results;
+    return unique.slice(0, 30);
 
   } catch (error) {
-
     console.error(
       `Daraz search error: ${error.message}`
     );
 
     return [];
+  }
+}
 
+
+/* =========================
+   JSON-LD
+========================= */
+
+function extractJsonLd(html, query, results) {
+  const regex =
+    /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+
+  let match;
+
+  while ((match = regex.exec(html)) !== null) {
+    try {
+      const data = JSON.parse(match[1].trim());
+
+      const items = Array.isArray(data)
+        ? data
+        : [data];
+
+      for (const item of items) {
+        processJsonObject(item, query, results);
+      }
+
+    } catch (error) {
+      // Ignore invalid JSON-LD blocks
+    }
+  }
+}
+
+
+function processJsonObject(object, query, results) {
+  if (!object || typeof object !== "object") {
+    return;
   }
 
-}
+  if (
+    object["@type"] === "Product" ||
+    object.name
+  ) {
+    const name =
+      typeof object.name === "string"
+        ? object.name
+        : "";
 
+    let price = null;
 
-/* ============================================================
-   FETCH
-   ============================================================ */
+    if (object.offers) {
+      const offers = Array.isArray(object.offers)
+        ? object.offers
+        : [object.offers];
 
-async function fetchWithTimeout(url) {
+      for (const offer of offers) {
+        const p = parsePrice(
+          offer && offer.price
+        );
 
-  return fetch(
-    url,
-    {
-      method: "GET",
-      headers: HEADERS,
-      redirect: "follow",
-      signal: AbortSignal.timeout(25000)
+        if (isValidPrice(p)) {
+          price = p;
+          break;
+        }
+      }
     }
-  );
 
+    const productUrl =
+      typeof object.url === "string"
+        ? object.url
+        : "";
+
+    let image = "";
+
+    if (Array.isArray(object.image)) {
+      image = object.image[0] || "";
+    } else if (
+      typeof object.image === "string"
+    ) {
+      image = object.image;
+    }
+
+    addProduct(
+      results,
+      {
+        name,
+        price,
+        url: productUrl,
+        image
+      },
+      query
+    );
+  }
+
+  if (Array.isArray(object["@graph"])) {
+    for (const item of object["@graph"]) {
+      processJsonObject(
+        item,
+        query,
+        results
+      );
+    }
+  }
 }
 
 
-/* ============================================================
-   EXTRACT PRODUCTS
-   ============================================================ */
+/* =========================
+   EMBEDDED DATA
+========================= */
 
-function extractProductsFromPage(html, query) {
-
-  const results = [];
-
-  /*
-   * First try Daraz's embedded JSON.
-   */
-
-  extractFromEmbeddedJson(
-    html,
-    query,
-    results
-  );
-
-
-  /*
-   * Then try JSON-LD.
-   */
-
-  extractFromJsonLd(
-    html,
-    query,
-    results
-  );
-
-
-  /*
-   * Finally try ordinary HTML anchors.
-   */
-
-  extractFromHtml(
-    html,
-    query,
-    results
-  );
-
-
-  return results;
-
-}
-
-
-/* ============================================================
-   EMBEDDED DARAZ JSON
-   ============================================================ */
-
-function extractFromEmbeddedJson(
+function extractEmbeddedData(
   html,
   query,
   results
 ) {
-
   const patterns = [
-
-    /window\.__[^=]+=\s*(\{[\s\S]*?\});/g,
-
-    /window\._[A-Za-z0-9_]+\s*=\s*(\{[\s\S]*?\});/g,
-
-    /<script[^>]*>\s*(\{[\s\S]{100,}\})\s*<\/script>/gi
-
+    /window\.__INITIAL_STATE__\s*=\s*(\{[\s\S]*?\});/g,
+    /window\.__NEXT_DATA__\s*=\s*(\{[\s\S]*?\});/g
   ];
 
-
-  for (const pattern of patterns) {
-
+  for (const regex of patterns) {
     let match;
 
-    while (
-      (match = pattern.exec(html)) !== null
-    ) {
-
-      const jsonText =
-        match[1];
-
-      /*
-       * Don't attempt extremely large arbitrary
-       * strings as JSON.
-       */
-
-      if (
-        !jsonText ||
-        jsonText.length > 5000000
-      ) {
-        continue;
-      }
-
-
+    while ((match = regex.exec(html)) !== null) {
       try {
-
-        const data =
-          JSON.parse(jsonText);
-
+        const data = JSON.parse(match[1]);
 
         walkObject(
           data,
@@ -247,83 +195,52 @@ function extractFromEmbeddedJson(
           results
         );
 
-      } catch {
-        /*
-         * Not valid JSON.
-         * Continue with the other extraction methods.
-         */
+      } catch (error) {
+        // Ignore invalid embedded JSON
       }
-
     }
-
   }
-
 }
 
-
-/* ============================================================
-   RECURSIVE OBJECT SEARCH
-   ============================================================ */
 
 function walkObject(
   object,
   query,
   results
 ) {
-
-  if (
-    object === null ||
-    object === undefined
-  ) {
+  if (!object) {
     return;
   }
 
-
-  if (
-    Array.isArray(object)
-  ) {
-
+  if (Array.isArray(object)) {
     for (const item of object) {
-
       walkObject(
         item,
         query,
         results
       );
-
     }
 
     return;
-
   }
 
-
-  if (
-    typeof object !== "object"
-  ) {
+  if (typeof object !== "object") {
     return;
   }
 
-
-  /*
-   * Look for objects that resemble Daraz products.
-   */
-
   const name =
-    firstString(
+    getString(
       object,
       [
         "name",
         "productName",
         "itemName",
-        "title",
-        "name_en"
+        "title"
       ]
     );
 
-
   const url =
-    firstString(
+    getString(
       object,
       [
         "url",
@@ -333,319 +250,87 @@ function walkObject(
       ]
     );
 
-
   const image =
-    firstString(
+    getString(
       object,
       [
         "image",
         "imageUrl",
-        "img",
         "image_url",
-        "mainImage"
+        "mainImage",
+        "img"
       ]
     );
 
-
   const price =
-    firstNumber(
+    getNumber(
       object,
       [
         "price",
         "salePrice",
         "specialPrice",
         "currentPrice",
-        "priceShow",
         "promotionPrice"
       ]
     );
 
-
   if (
     name &&
-    (
-      url ||
-      image
-    )
+    (url || image)
   ) {
-
     addProduct(
       results,
       {
         name,
         price,
         url,
-        image,
-        availability:
-          "Check store"
+        image
       },
       query
     );
-
   }
 
-
-  /*
-   * Continue through nested objects.
-   */
-
-  for (
-    const key of Object.keys(object)
-  ) {
-
-    /*
-     * Avoid enormous irrelevant structures.
-     */
-
+  for (const key of Object.keys(object)) {
     if (
       key === "tracking" ||
-      key === "analytics" ||
-      key === "recommendation"
+      key === "analytics"
     ) {
       continue;
     }
-
 
     walkObject(
       object[key],
       query,
       results
     );
-
   }
-
 }
 
 
-/* ============================================================
-   JSON-LD
-   ============================================================ */
-
-function extractFromJsonLd(
-  html,
-  query,
-  results
-) {
-
-  const scripts =
-    html.matchAll(
-      /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-    );
-
-
-  for (const match of scripts) {
-
-    try {
-
-      const data =
-        JSON.parse(
-          match[1].trim()
-        );
-
-
-      const objects =
-        Array.isArray(data)
-          ? data
-          : [data];
-
-
-      for (const object of objects) {
-
-        extractJsonLdObject(
-          object,
-          query,
-          results
-        );
-
-      }
-
-    } catch {
-      continue;
-    }
-
-  }
-
-}
-
-
-/* ============================================================
-   JSON-LD OBJECT
-   ============================================================ */
-
-function extractJsonLdObject(
-  object,
-  query,
-  results
-) {
-
-  if (
-    !object ||
-    typeof object !== "object"
-  ) {
-    return;
-  }
-
-
-  if (
-    object["@type"] === "Product" ||
-    object.name
-  ) {
-
-    const name =
-      object.name;
-
-
-    let price =
-      null;
-
-
-    if (
-      object.offers
-    ) {
-
-      const offers =
-        Array.isArray(object.offers)
-          ? object.offers
-          : [object.offers];
-
-
-      for (const offer of offers) {
-
-        const candidate =
-          parsePrice(
-            offer &&
-            offer.price
-          );
-
-
-        if (
-          validPrice(candidate)
-        ) {
-
-          price =
-            candidate;
-
-          break;
-
-        }
-
-      }
-
-    }
-
-
-    const url =
-      object.url ||
-      "";
-
-
-    const image =
-      Array.isArray(object.image)
-        ? object.image[0]
-        : object.image || "";
-
-
-    if (
-      name &&
-      (
-        url ||
-        image
-      )
-    ) {
-
-      addProduct(
-        results,
-        {
-          name,
-          price,
-          url,
-          image,
-          availability:
-            "Check store"
-        },
-        query
-      );
-
-    }
-
-  }
-
-
-  /*
-   * Handle @graph.
-   */
-
-  if (
-    Array.isArray(object["@graph"])
-  ) {
-
-    for (
-      const item of object["@graph"]
-    ) {
-
-      extractJsonLdObject(
-        item,
-        query,
-        results
-      );
-
-    }
-
-  }
-
-}
-
-
-/* ============================================================
+/* =========================
    HTML FALLBACK
-   ============================================================ */
+========================= */
 
-function extractFromHtml(
+function extractHtmlProducts(
   html,
   query,
   results
 ) {
-
-  /*
-   * Daraz product links normally contain
-   * /products/ in the URL.
-   */
-
-  const linkPattern =
+  const regex =
     /<a[^>]+href=["']([^"']*\/products\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
-
 
   let match;
 
+  while ((match = regex.exec(html)) !== null) {
+    const productUrl =
+      normalizeUrl(match[1]);
 
-  while (
-    (match = linkPattern.exec(html)) !== null
-  ) {
-
-    const rawUrl =
-      match[1];
-
-
-    const anchorHtml =
-      match[2];
-
-
-    const url =
-      normalizeUrl(
-        rawUrl
-      );
-
-
-    if (!url) {
+    if (!productUrl) {
       continue;
     }
 
-
     const name =
-      cleanText(
-        anchorHtml
-      );
-
+      cleanText(match[2]);
 
     if (
       !name ||
@@ -654,110 +339,56 @@ function extractFromHtml(
       continue;
     }
 
-
-    /*
-     * Search nearby HTML for a price.
-     */
-
-    const start =
-      Math.max(
-        0,
-        match.index - 1500
-      );
-
-
-    const end =
-      Math.min(
-        html.length,
-        match.index + 5000
-      );
-
-
     const nearby =
-      html.slice(
-        start,
-        end
+      html.substring(
+        Math.max(0, match.index - 1000),
+        Math.min(
+          html.length,
+          match.index + 5000
+        )
       );
-
 
     const price =
-      extractPriceFromText(
-        nearby
-      );
-
+      extractPrice(nearby);
 
     const image =
-      extractImageNear(
-        nearby
-      );
-
+      extractImage(nearby);
 
     addProduct(
       results,
       {
         name,
         price,
-        url,
-        image,
-        availability:
-          "Check store"
+        url: productUrl,
+        image
       },
       query
     );
-
   }
-
 }
 
 
-/* ============================================================
-   ADD PRODUCT
-   ============================================================ */
+/* =========================
+   PRODUCT
+========================= */
 
 function addProduct(
   results,
   product,
   query
 ) {
-
-  if (
-    !product ||
-    !product.name
-  ) {
+  if (!product || !product.name) {
     return;
   }
-
 
   const name =
     cleanText(
-      decodeHtml(
-        product.name
-      )
+      product.name
     );
 
-
-  if (
-    !name ||
-    name.length < 3
-  ) {
+  if (!name) {
     return;
   }
-
-
-  /*
-   * Ignore navigation/category text.
-   */
-
-  if (
-    isBadProductName(name)
-  ) {
-    return;
-  }
-
-
-  /*
-   * Product must actually match the search.
-   */
 
   if (
     !matchesSearch(
@@ -768,493 +399,246 @@ function addProduct(
     return;
   }
 
-
   const price =
     parsePrice(
       product.price
     );
 
-
-  /*
-   * Daraz contains many unrelated results,
-   * so don't return products without a reliable price.
-   */
-
-  if (
-    !validPrice(price)
-  ) {
+  if (!isValidPrice(price)) {
     return;
   }
-
 
   const url =
     normalizeUrl(
       product.url
     );
 
-
   if (!url) {
     return;
   }
-
 
   const image =
     normalizeImage(
       product.image
     );
 
-
   results.push({
-
     name,
-
-    store:
-      "Daraz Nepal",
-
+    store: "Daraz Nepal",
     price,
-
-    shipping:
-      0,
-
-    total:
-      price,
-
-    currency:
-      "NPR",
-
-    availability:
-      product.availability ||
-      "Check store",
-
+    shipping: 0,
+    total: price,
+    currency: "NPR",
+    availability: "Check store",
     url,
-
     image,
-
-    source:
-      "Daraz Nepal",
-
-    lastUpdated:
-      new Date().toISOString()
-
+    source: "Daraz Nepal",
+    lastUpdated: new Date().toISOString()
   });
-
 }
 
 
-/* ============================================================
-   PRICE EXTRACTION
-   ============================================================ */
-
-function extractPriceFromText(text) {
-
-  if (!text) {
-    return null;
-  }
-
-
-  const patterns = [
-
-    /Rs\.?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
-
-    /NPR\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
-
-    /₨\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g,
-
-    /रू\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g,
-
-    /रु\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g
-
-  ];
-
-
-  const prices = [];
-
-
-  for (
-    const pattern of patterns
-  ) {
-
-    for (
-      const match of text.matchAll(pattern)
-    ) {
-
-      const price =
-        parsePrice(
-          match[1]
-        );
-
-
-      if (
-        validPrice(price)
-      ) {
-
-        prices.push(price);
-
-      }
-
-    }
-
-  }
-
-
-  if (!prices.length) {
-    return null;
-  }
-
-
-  /*
-   * Return the smallest valid price in the
-   * nearby product block.
-   */
-
-  return Math.min(
-    ...new Set(prices)
-  );
-
-}
-
-
-/* ============================================================
-   IMAGE NEAR PRODUCT
-   ============================================================ */
-
-function extractImageNear(text) {
-
-  if (!text) {
-    return "";
-  }
-
-
-  const patterns = [
-
-    /<img[^>]+src=["']([^"']+)["']/i,
-
-    /<img[^>]+data-src=["']([^"']+)["']/i,
-
-    /<img[^>]+data-original=["']([^"']+)["']/i
-
-  ];
-
-
-  for (
-    const pattern of patterns
-  ) {
-
-    const match =
-      text.match(pattern);
-
-
-    if (
-      match &&
-      match[1]
-    ) {
-
-      return normalizeImage(
-        decodeHtml(
-          match[1]
-        )
-      );
-
-    }
-
-  }
-
-
-  return "";
-
-}
-
-
-/* ============================================================
+/* =========================
    SEARCH MATCH
-   ============================================================ */
+========================= */
 
 function matchesSearch(
   query,
   name
 ) {
-
   const search =
-    normalizeSearch(
-      query
-    );
-
+    normalizeSearch(query);
 
   const product =
-    normalizeSearch(
-      name
-    );
+    normalizeSearch(name);
 
-
-  if (
-    !search ||
-    !product
-  ) {
+  if (!search || !product) {
     return false;
   }
 
-
-  /*
-   * Exact phrase.
-   */
-
-  if (
-    product.includes(search)
-  ) {
+  if (product.includes(search)) {
     return true;
   }
-
 
   const words =
     search
       .split(/\s+/)
       .filter(
-        word =>
-          word.length >= 2
+        word => word.length >= 2
       );
-
 
   if (!words.length) {
     return false;
   }
 
+  let matched = 0;
 
-  let matched =
-    0;
-
-
-  for (
-    const word of words
-  ) {
-
-    if (
-      product.includes(word)
-    ) {
-
+  for (const word of words) {
+    if (product.includes(word)) {
       matched++;
-      continue;
-
     }
-
-
-    /*
-     * Singular/plural tolerance.
-     */
-
-    if (
-      word.endsWith("s") &&
-      product.includes(
-        word.slice(0, -1)
-      )
-    ) {
-
-      matched++;
-      continue;
-
-    }
-
-
-    if (
-      !word.endsWith("s") &&
-      product.includes(
-        word + "s"
-      )
-    ) {
-
-      matched++;
-
-    }
-
   }
-
-
-  /*
-   * For a one-word search, require that word.
-   * For multiple words, at least half must match.
-   */
 
   return (
     matched >=
-    Math.ceil(
-      words.length / 2
-    )
+    Math.ceil(words.length / 2)
   );
-
 }
 
 
-/* ============================================================
-   REMOVE DUPLICATES
-   ============================================================ */
+/* =========================
+   PRICE
+========================= */
 
-function removeDuplicates(
-  products
-) {
-
-  const seen =
-    new Set();
-
-
-  const output =
-    [];
-
-
-  for (
-    const product of products
-  ) {
-
-    const key =
-      (
-        product.url ||
-        `${product.name}|${product.price}`
-      )
-        .toLowerCase()
-        .trim();
-
-
-    if (
-      seen.has(key)
-    ) {
-      continue;
-    }
-
-
-    seen.add(key);
-
-    output.push(product);
-
+function extractPrice(text) {
+  if (!text) {
+    return null;
   }
 
-
-  return output;
-
-}
-
-
-/* ============================================================
-   BAD PRODUCT NAME FILTER
-   ============================================================ */
-
-function isBadProductName(name) {
-
-  const value =
-    normalizeSearch(
-      name
-    );
-
-
-  const bad = [
-
-    "home",
-
-    "login",
-
-    "sign in",
-
-    "register",
-
-    "help center",
-
-    "customer care",
-
-    "terms and conditions",
-
-    "privacy policy",
-
-    "sell on daraz",
-
-    "download app",
-
-    "categories",
-
-    "flash sale",
-
-    "shop now"
-
+  const patterns = [
+    /Rs\.?\s*([0-9][0-9,]*)/gi,
+    /NPR\s*([0-9][0-9,]*)/gi,
+    /₨\s*([0-9][0-9,]*)/g,
+    /रु\.?\s*([0-9][0-9,]*)/g
   ];
 
+  const prices = [];
 
-  return bad.includes(value);
+  for (const regex of patterns) {
+    let match;
 
-}
+    while ((match = regex.exec(text)) !== null) {
+      const price =
+        parsePrice(match[1]);
 
-
-/* ============================================================
-   OBJECT HELPERS
-   ============================================================ */
-
-function firstString(
-  object,
-  keys
-) {
-
-  for (
-    const key of keys
-  ) {
-
-    const value =
-      object[key];
-
-
-    if (
-      typeof value === "string" &&
-      value.trim()
-    ) {
-
-      return value;
-
+      if (isValidPrice(price)) {
+        prices.push(price);
+      }
     }
-
   }
 
+  if (!prices.length) {
+    return null;
+  }
 
-  return "";
-
+  return Math.min(...prices);
 }
 
 
-function firstNumber(
+function parsePrice(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const cleaned =
+    String(value)
+      .replace(/Rs\.?/gi, "")
+      .replace(/NPR/gi, "")
+      .replace(/₨/g, "")
+      .replace(/रु/g, "")
+      .replace(/रू/g, "")
+      .replace(/,/g, "")
+      .trim();
+
+  const number =
+    Number(cleaned);
+
+  if (!Number.isFinite(number)) {
+    return null;
+  }
+
+  return number;
+}
+
+
+function isValidPrice(price) {
+  return (
+    Number.isFinite(price) &&
+    price >= 100 &&
+    price < 10000000
+  );
+}
+
+
+/* =========================
+   IMAGE
+========================= */
+
+function extractImage(text) {
+  if (!text) {
+    return "";
+  }
+
+  const patterns = [
+    /<img[^>]+src=["']([^"']+)["']/i,
+    /<img[^>]+data-src=["']([^"']+)["']/i,
+    /<img[^>]+data-original=["']([^"']+)["']/i
+  ];
+
+  for (const regex of patterns) {
+    const match =
+      text.match(regex);
+
+    if (
+      match &&
+      match[1]
+    ) {
+      return normalizeImage(
+        match[1]
+      );
+    }
+  }
+
+  return "";
+}
+
+
+/* =========================
+   HELPERS
+========================= */
+
+function getString(
   object,
   keys
 ) {
+  for (const key of keys) {
+    if (
+      typeof object[key] === "string" &&
+      object[key].trim()
+    ) {
+      return object[key];
+    }
+  }
 
-  for (
-    const key of keys
-  ) {
+  return "";
+}
 
-    const value =
+
+function getNumber(
+  object,
+  keys
+) {
+  for (const key of keys) {
+    const number =
       parsePrice(
         object[key]
       );
 
-
-    if (
-      validPrice(value)
-    ) {
-
-      return value;
-
+    if (isValidPrice(number)) {
+      return number;
     }
-
   }
 
-
   return null;
-
 }
 
 
-/* ============================================================
-   NORMALIZATION
-   ============================================================ */
-
-function normalizeSearch(
-  text
-) {
-
-  return String(
-    text || ""
-  )
+function normalizeSearch(text) {
+  return String(text || "")
     .toLowerCase()
     .replace(
       /[^a-z0-9]+/g,
@@ -1265,17 +649,11 @@ function normalizeSearch(
       " "
     )
     .trim();
-
 }
 
 
-function cleanText(
-  text
-) {
-
-  return String(
-    text || ""
-  )
+function cleanText(text) {
+  return String(text || "")
     .replace(
       /<script[\s\S]*?<\/script>/gi,
       " "
@@ -1285,25 +663,9 @@ function cleanText(
       " "
     )
     .replace(
-      /<[^>]*>/g,
+      /<[^>]+>/g,
       " "
     )
-    .replace(
-      /\s+/g,
-      " "
-    )
-    .trim();
-
-}
-
-
-function decodeHtml(
-  text
-) {
-
-  return String(
-    text || ""
-  )
     .replace(
       /&amp;/gi,
       "&"
@@ -1317,209 +679,85 @@ function decodeHtml(
       "'"
     )
     .replace(
-      /&#x27;/gi,
-      "'"
-    )
-    .replace(
-      /&lt;/gi,
-      "<"
-    )
-    .replace(
-      /&gt;/gi,
-      ">"
-    )
-    .replace(
       /&nbsp;/gi,
       " "
-    );
-
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
 }
 
 
-/* ============================================================
-   URL HELPERS
-   ============================================================ */
-
-function normalizeUrl(
-  url
-) {
-
+function normalizeUrl(url) {
   if (!url) {
     return "";
   }
 
-
   let value =
-    String(url)
-      .trim();
-
-
-  value =
-    decodeHtml(
-      value
-    );
-
+    String(url).trim();
 
   if (
     value.startsWith("//")
   ) {
-
     return "https:" + value;
-
   }
-
 
   if (
     value.startsWith("/")
   ) {
-
     return BASE_URL + value;
-
   }
-
 
   if (
     value.startsWith("http://") ||
     value.startsWith("https://")
   ) {
-
     return value;
-
   }
-
 
   return "";
-
 }
 
 
-function normalizeImage(
-  url
+function normalizeImage(url) {
+  return normalizeUrl(url);
+}
+
+
+function removeDuplicates(
+  products
 ) {
+  const seen =
+    new Set();
 
-  const value =
-    normalizeUrl(
-      url
-    );
+  const output =
+    [];
 
+  for (const product of products) {
+    const key =
+      (
+        product.url ||
+        `${product.name}|${product.price}`
+      )
+        .toLowerCase()
+        .trim();
 
-  if (!value) {
-    return "";
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    output.push(product);
   }
 
-
-  /*
-   * Ignore tiny tracking images.
-   */
-
-  if (
-    value.includes("pixel") ||
-    value.includes("tracking")
-  ) {
-
-    return "";
-
-  }
-
-
-  return value;
-
+  return output;
 }
 
 
-/* ============================================================
-   PRICE
-   ============================================================ */
-
-function parsePrice(
-  value
-) {
-
-  if (
-    value === null ||
-    value === undefined ||
-    value === ""
-  ) {
-
-    return null;
-
-  }
-
-
-  /*
-   * Handle strings such as:
-   *
-   * Rs. 80,399
-   * NPR 80,399
-   * 80399
-   */
-
-  const cleaned =
-    String(value)
-      .replace(
-        /Rs\.?/gi,
-        ""
-      )
-      .replace(
-        /NPR/gi,
-        ""
-      )
-      .replace(
-        /₨/g,
-        ""
-      )
-      .replace(
-        /रू/g,
-        ""
-      )
-      .replace(
-        /रु/g,
-        ""
-      )
-      .replace(
-        /,/g,
-        ""
-      )
-      .trim();
-
-
-  const number =
-    Number(
-      cleaned
-    );
-
-
-  if (
-    !Number.isFinite(number)
-  ) {
-
-    return null;
-
-  }
-
-
-  return number;
-
-}
-
-
-function validPrice(
-  price
-) {
-
-  return (
-    Number.isFinite(price) &&
-    price >= 100 &&
-    price < 10000000
-  );
-
-}
-
-
-/* ============================================================
+/* =========================
    EXPORT
-   ============================================================ */
+========================= */
 
-module.exports =
-  searchDaraz;
-```
+module.exports = searchDaraz;
