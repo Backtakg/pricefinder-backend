@@ -5,10 +5,11 @@ const {
   searchAllStores
 } = require("./stores/index");
 
-const searchNeptronics = require("./stores/neptronics");
-const searchBigbyte = require("./stores/bigbyte");
-const searchITMonster = require("./stores/itmonster");
+const neptronics = require("./stores/neptronics");
+const bigbyte = require("./stores/bigbyte");
 const xiaominepal = require("./stores/xiaominepal");
+const searchITMonster = require("./stores/itmonster");
+
 
 const app = express();
 
@@ -63,7 +64,7 @@ const stores = [
   neptronics,
   bigbyte,
   xiaominepal,
-  itmonster
+ itmonster
 ];
 
 // ==========================================
