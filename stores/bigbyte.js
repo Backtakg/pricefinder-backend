@@ -29,6 +29,13 @@ async function searchBigbyte(query) {
     }
 
     const html = await response.text();
+    console.log("BIGBYTE STATUS:", response.status);
+console.log("BIGBYTE URL:", response.url);
+console.log("BIGBYTE HTML LENGTH:", html.length);
+console.log(
+  "BIGBYTE HTML START:",
+  html.substring(0, 1000)
+);
 
     // ==========================================
     // FIND PRODUCT LINKS
