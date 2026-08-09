@@ -60,7 +60,7 @@ registerStore(
   searchITMonster
 );
 
-);
+
 const stores = [
   neptronics,
   bigbyte,
