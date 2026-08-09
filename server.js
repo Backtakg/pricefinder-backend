@@ -5,18 +5,18 @@ const {
   searchAllStores
 } = require("./stores/index");
 
-const searchNeptronics =
-  require("./stores/neptronics");
+const searchNeptronics = require("./stores/neptronics");
 
 const app = express();
 
-const PORT =
-  process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
 
-// Register stores
+// ==========================================
+// REGISTER STORES
+// ==========================================
 
 registerStore(
   "Neptronics",
@@ -24,34 +24,50 @@ registerStore(
 );
 
 
-// Home
+// ==========================================
+// HOME / STATUS
+// ==========================================
 
 app.get("/", (req, res) => {
 
   res.json({
     success: true,
     message: "PriceFinder backend is running 🚀",
+
     stores: [
       "Neptronics"
     ]
+
   });
 
 });
 
 
-// Search
+// ==========================================
+// SEARCH API
+// ==========================================
 
 app.get("/api/search", async (req, res) => {
 
-  const query =
-    String(req.query.q || "").trim();
+  const query = String(
+    req.query.q || ""
+  ).trim();
 
+
+  // Check search query
 
   if (!query) {
 
     return res.status(400).json({
+
       success: false,
-      error: "Please provide a search query."
+
+      error: "Please provide a search query.",
+
+      count: 0,
+
+      results: []
+
     });
 
   }
@@ -63,7 +79,7 @@ app.get("/api/search", async (req, res) => {
       await searchAllStores(query);
 
 
-    res.json({
+    return res.json({
 
       success: true,
 
@@ -75,15 +91,26 @@ app.get("/api/search", async (req, res) => {
 
     });
 
+
   } catch (error) {
 
-    console.error(error);
+    console.error(
+      "Search error:",
+      error
+    );
 
-    res.status(500).json({
+
+    return res.status(500).json({
 
       success: false,
 
-      error: "Search failed."
+      query: query,
+
+      error: "Search failed.",
+
+      count: 0,
+
+      results: []
 
     });
 
@@ -91,6 +118,29 @@ app.get("/api/search", async (req, res) => {
 
 });
 
+
+// ==========================================
+// HEALTH CHECK
+// ==========================================
+
+app.get("/api/health", (req, res) => {
+
+  res.json({
+
+    success: true,
+
+    status: "online",
+
+    message: "PriceFinder API is healthy 🚀"
+
+  });
+
+});
+
+
+// ==========================================
+// START SERVER
+// ==========================================
 
 app.listen(PORT, () => {
 
