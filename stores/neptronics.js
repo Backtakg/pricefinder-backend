@@ -1,3 +1,7 @@
+// ============================================================
+// NEPTRONICS STORE SEARCH
+// ============================================================
+
 async function searchNeptronics(query) {
   const searchTerm = String(query || "").trim();
 
@@ -6,16 +10,26 @@ async function searchNeptronics(query) {
   }
 
   try {
+    // --------------------------------------------------------
+    // SEARCH NEPTRONICS
+    // --------------------------------------------------------
+
     const searchUrl =
       "https://neptronics.com/shop/?s=" +
       encodeURIComponent(searchTerm) +
       "&post_type=product";
 
+    console.log(
+      `Neptronics: searching for "${searchTerm}"`
+    );
+
     const response = await fetch(searchUrl, {
       headers: {
         "User-Agent":
           "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-        Accept: "text/html,application/xhtml+xml"
+
+        "Accept":
+          "text/html,application/xhtml+xml"
       }
     });
 
@@ -24,14 +38,15 @@ async function searchNeptronics(query) {
         "Neptronics search status:",
         response.status
       );
+
       return [];
     }
 
     const html = await response.text();
 
-    // ==========================================
+    // --------------------------------------------------------
     // FIND PRODUCT LINKS
-    // ==========================================
+    // --------------------------------------------------------
 
     const matches = [
       ...html.matchAll(
@@ -43,19 +58,23 @@ async function searchNeptronics(query) {
     const seen = new Set();
 
     for (const match of matches) {
-      let url = match[1];
+      let productUrl = match[1];
 
-      url = decodeHtml(url);
+      productUrl = decodeHtml(productUrl);
 
-      if (!url.startsWith("http")) {
-        url = "https://neptronics.com" + url;
+      if (!productUrl.startsWith("http")) {
+        productUrl =
+          "https://neptronics.com" +
+          productUrl;
       }
 
-      url = url.split("?")[0];
+      // Remove query parameters
+      productUrl =
+        productUrl.split("?")[0];
 
-      if (!seen.has(url)) {
-        seen.add(url);
-        productUrls.push(url);
+      if (!seen.has(productUrl)) {
+        seen.add(productUrl);
+        productUrls.push(productUrl);
       }
     }
 
@@ -65,26 +84,26 @@ async function searchNeptronics(query) {
 
     const results = [];
 
-    // Check maximum 10 products
-    const urlsToCheck = productUrls.slice(0, 10);
+    // Check maximum 15 products
+    const urlsToCheck =
+      productUrls.slice(0, 15);
 
-    // ==========================================
-    // OPEN EACH PRODUCT
-    // ==========================================
+    // --------------------------------------------------------
+    // OPEN PRODUCT PAGES
+    // --------------------------------------------------------
 
     for (const productUrl of urlsToCheck) {
       try {
-        const productResponse = await fetch(
-          productUrl,
-          {
+        const productResponse =
+          await fetch(productUrl, {
             headers: {
               "User-Agent":
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-              Accept:
+
+              "Accept":
                 "text/html,application/xhtml+xml"
             }
-          }
-        );
+          });
 
         if (!productResponse.ok) {
           console.log(
@@ -92,177 +111,186 @@ async function searchNeptronics(query) {
             productResponse.status,
             productUrl
           );
+
           continue;
         }
 
         const productHtml =
           await productResponse.text();
 
-        // ==========================================
+        // ----------------------------------------------------
         // PRODUCT NAME
-        // ==========================================
+        // ----------------------------------------------------
 
-        let name = "";
+        let productName = "";
 
-        const h1Match = productHtml.match(
-          /<h1[^>]*>([\s\S]*?)<\/h1>/i
-        );
+        const h1Match =
+          productHtml.match(
+            /<h1[^>]*>([\s\S]*?)<\/h1>/i
+          );
 
         if (h1Match) {
-          name = cleanText(h1Match[1]);
+          productName =
+            cleanText(h1Match[1]);
         }
 
         // Fallback to title
-        if (!name) {
+        if (!productName) {
           const titleMatch =
             productHtml.match(
               /<title[^>]*>([\s\S]*?)<\/title>/i
             );
 
           if (titleMatch) {
-            name = cleanText(
-              titleMatch[1]
-                .replace(/\s*[-|].*$/, "")
-            );
+            productName =
+              cleanText(
+                titleMatch[1]
+                  .replace(/\s*[-|].*$/, "")
+              );
           }
         }
 
-        if (!name) {
+        if (!productName) {
           continue;
         }
 
-        // ==========================================
-        // MAKE SURE PRODUCT MATCHES QUERY
-        // ==========================================
+        // ----------------------------------------------------
+        // CHECK PRODUCT MATCHES SEARCH
+        // ----------------------------------------------------
 
-        if (
-          !name
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase())
-        ) {
+        const nameLower =
+          productName.toLowerCase();
+
+        const searchLower =
+          searchTerm.toLowerCase();
+
+        const searchWords =
+          searchLower
+            .split(/\s+/)
+            .filter(word => word.length > 0);
+
+        const matchesSearch =
+          nameLower.includes(searchLower) ||
+          searchWords.some(word =>
+            nameLower.includes(word)
+          );
+
+        if (!matchesSearch) {
           continue;
         }
 
-        // ==========================================
-        // FIND PRICE
-        // ==========================================
+        // ----------------------------------------------------
+        // PRODUCT PRICE
+        // ----------------------------------------------------
 
-        const price =
+        const productPrice =
           extractProductPrice(productHtml);
 
         console.log(
-          `Neptronics: ${name} -> price: ${price}`
+          `Neptronics: ${productName} -> price: ${productPrice}`
         );
 
-        // ==========================================
-        // FIND PRODUCT IMAGE
-        // ==========================================
-
-        const image =
-          extractProductImage(
-            productHtml,
-            productUrl
-          );
-
-        console.log(
-          `Neptronics: ${name} -> image: ${image}`
-        );
-
-        // ==========================================
+        // ----------------------------------------------------
         // AVAILABILITY
-        // ==========================================
+        // ----------------------------------------------------
 
-        let availability = "Check store";
+        let availability =
+          "Check store";
 
-        const stockMatch = productHtml.match(
-          /<p[^>]*class=["'][^"']*stock[^"']*["'][^>]*>([\s\S]*?)<\/p>/i
-        );
+        const stockMatch =
+          productHtml.match(
+            /<p[^>]*class=["'][^"']*stock[^"']*["'][^>]*>([\s\S]*?)<\/p>/i
+          );
 
         if (stockMatch) {
           const stockText =
-            cleanText(stockMatch[1]).toLowerCase();
+            cleanText(
+              stockMatch[1]
+            ).toLowerCase();
 
           if (
-            stockText.includes("out of stock") ||
-            stockText.includes("out-of-stock")
+            stockText.includes(
+              "out of stock"
+            ) ||
+            stockText.includes(
+              "out-of-stock"
+            )
           ) {
-            availability = "Out of stock";
+            availability =
+              "Out of stock";
           } else if (
-            stockText.includes("in stock") ||
-            stockText.includes("available")
+            stockText.includes(
+              "in stock"
+            ) ||
+            stockText.includes(
+              "available"
+            )
           ) {
-            availability = "Available";
+            availability =
+              "Available";
           }
         }
 
-        // ==========================================
+        // ----------------------------------------------------
+        // PRODUCT IMAGE
+        // ----------------------------------------------------
+
+        const productImage =
+          extractProductImage(
+            productHtml
+          );
+
+        console.log(
+          `Neptronics image: ${productImage || "not found"}`
+        );
+
+        // ----------------------------------------------------
+        // TOTAL
+        // ----------------------------------------------------
+
+        const shipping = 0;
+
+        const total =
+          Number.isFinite(
+            Number(productPrice)
+          )
+            ? Number(productPrice) +
+              shipping
+            : null;
+
+        // ----------------------------------------------------
         // ADD RESULT
-        // ==========================================
+        // ----------------------------------------------------
 
-      // -----------------------------------------
-// PRODUCT IMAGE
-// -----------------------------------------
+        results.push({
+          name: productName,
 
-let image = "";
+          store: "Neptronics",
 
-// Try Open Graph image first
-const ogImageMatch = productHtml.match(
-  /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i
-);
+          price:
+            productPrice,
 
-if (ogImageMatch) {
-  image = decodeHtml(ogImageMatch[1]);
-}
+          shipping:
+            shipping,
 
-// Try WooCommerce product image
-if (!image) {
-  const productImageMatch = productHtml.match(
-    /<img[^>]+class=["'][^"']*(?:wp-post-image|woocommerce-product-gallery__image)[^"']*["'][^>]+src=["']([^"']+)["']/i
-  );
+          total:
+            total,
 
-  if (productImageMatch) {
-    image = decodeHtml(productImageMatch[1]);
-  }
-}
+          availability:
+            availability,
 
-// Try data-src for lazy-loaded images
-if (!image) {
-  const lazyImageMatch = productHtml.match(
-    /<img[^>]+(?:data-src|data-lazy-src)=["']([^"']+)["']/i
-  );
+          url:
+            productUrl,
 
-  if (lazyImageMatch) {
-    image = decodeHtml(lazyImageMatch[1]);
-  }
-}
+          image:
+            productImage,
 
-// Make relative image URL absolute
-if (
-  image &&
-  !image.startsWith("http")
-) {
-  image =
-    "https://neptronics.com" +
-    (image.startsWith("/") ? "" : "/") +
-    image;
-}
+          source:
+            "Neptronics",
 
-// -----------------------------------------
-// ADD RESULT
-// -----------------------------------------
-
-results.push({
-  name: name,
-  store: "Neptronics",
-  price: price,
-  shipping: 0,
-  total: price,
-  availability: availability,
-  url: productUrl,
-  image: image,
-  source: "Neptronics",
-  lastUpdated: new Date().toISOString()
-});
+          lastUpdated:
+            new Date().toISOString()
+        });
 
       } catch (error) {
         console.log(
@@ -289,373 +317,15 @@ results.push({
 }
 
 
-// =================================================
-// EXTRACT PRODUCT IMAGE
-// =================================================
-
-function extractProductImage(html, productUrl) {
-
-  // -----------------------------------------
-  // METHOD 1: JSON-LD PRODUCT DATA
-  // -----------------------------------------
-
-  const jsonLdMatches = [
-    ...html.matchAll(
-      /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-    )
-  ];
-
-  for (const match of jsonLdMatches) {
-
-    try {
-      const data = JSON.parse(
-        match[1].trim()
-      );
-
-      const objects = Array.isArray(data)
-        ? data
-        : [data];
-
-      for (const obj of objects) {
-
-        if (!obj) {
-          continue;
-        }
-
-        // Direct image
-        if (obj.image) {
-
-          let image = obj.image;
-
-          if (Array.isArray(image)) {
-            image = image[0];
-          }
-
-          if (
-            typeof image === "object" &&
-            image.url
-          ) {
-            image = image.url;
-          }
-
-          if (typeof image === "string") {
-            return makeAbsoluteUrl(
-              decodeHtml(image),
-              productUrl
-            );
-          }
-        }
-
-        // Product object inside @graph
-        if (Array.isArray(obj["@graph"])) {
-
-          for (const graphItem of obj["@graph"]) {
-
-            if (
-              graphItem &&
-              graphItem.image
-            ) {
-
-              let image =
-                graphItem.image;
-
-              if (Array.isArray(image)) {
-                image = image[0];
-              }
-
-              if (
-                typeof image === "object" &&
-                image.url
-              ) {
-                image = image.url;
-              }
-
-              if (
-                typeof image === "string"
-              ) {
-                return makeAbsoluteUrl(
-                  decodeHtml(image),
-                  productUrl
-                );
-              }
-            }
-          }
-        }
-      }
-
-    } catch (error) {
-      // Ignore invalid JSON-LD
-    }
-  }
-
-
-  // -----------------------------------------
-  // METHOD 2: OG IMAGE
-  // -----------------------------------------
-
-  const ogImageMatch = html.match(
-    /<meta[^>]*(?:property|name)=["']og:image["'][^>]*content=["']([^"']+)["'][^>]*>/i
-  );
-
-  if (ogImageMatch) {
-    return makeAbsoluteUrl(
-      decodeHtml(ogImageMatch[1]),
-      productUrl
-    );
-  }
-
-  // Alternative order of attributes
-  const ogImageReverse = html.match(
-    /<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']og:image["'][^>]*>/i
-  );
-
-  if (ogImageReverse) {
-    return makeAbsoluteUrl(
-      decodeHtml(ogImageReverse[1]),
-      productUrl
-    );
-  }
-
-
-  // -----------------------------------------
-  // METHOD 3: TWITTER IMAGE
-  // -----------------------------------------
-
-  const twitterImageMatch = html.match(
-    /<meta[^>]*(?:property|name)=["']twitter:image["'][^>]*content=["']([^"']+)["'][^>]*>/i
-  );
-
-  if (twitterImageMatch) {
-    return makeAbsoluteUrl(
-      decodeHtml(twitterImageMatch[1]),
-      productUrl
-    );
-  }
-
-  const twitterImageReverse = html.match(
-    /<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']twitter:image["'][^>]*>/i
-  );
-
-  if (twitterImageReverse) {
-    return makeAbsoluteUrl(
-      decodeHtml(twitterImageReverse[1]),
-      productUrl
-    );
-  }
-
-
-  // -----------------------------------------
-  // METHOD 4: WOOCOMMERCE PRODUCT IMAGE
-  // -----------------------------------------
-
-  const wooImageMatch = html.match(
-    /<img[^>]*(?:class=["'][^"']*(?:wp-post-image|woocommerce-product-gallery__image|attachment-woocommerce_thumbnail)[^"']*["'])[^>]*>/i
-  );
-
-  if (wooImageMatch) {
-
-    const image =
-      extractImageFromTag(
-        wooImageMatch[0]
-      );
-
-    if (image) {
-      return makeAbsoluteUrl(
-        image,
-        productUrl
-      );
-    }
-  }
-
-
-  // -----------------------------------------
-  // METHOD 5: PRODUCT IMAGE CONTAINER
-  // -----------------------------------------
-
-  const productImageMatch = html.match(
-    /<div[^>]*class=["'][^"']*(?:woocommerce-product-gallery|product-image|product-thumbnail)[^"']*["'][^>]*>[\s\S]{0,5000}?<img[^>]*>/i
-  );
-
-  if (productImageMatch) {
-
-    const imageTag =
-      productImageMatch[0].match(
-        /<img[^>]*>/i
-      );
-
-    if (imageTag) {
-
-      const image =
-        extractImageFromTag(
-          imageTag[0]
-        );
-
-      if (image) {
-        return makeAbsoluteUrl(
-          image,
-          productUrl
-        );
-      }
-    }
-  }
-
-
-  // -----------------------------------------
-  // METHOD 6: FIRST LARGE JPG/PNG/WEBP IMAGE
-  // -----------------------------------------
-
-  const imageMatches = [
-    ...html.matchAll(
-      /<img[^>]+(?:src|data-src|data-lazy-src)=["']([^"']+\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)["'][^>]*>/gi
-    )
-  ];
-
-  for (const match of imageMatches) {
-
-    const image =
-      decodeHtml(match[1]);
-
-    // Ignore obvious logos/icons
-    const lower =
-      image.toLowerCase();
-
-    if (
-      lower.includes("logo") ||
-      lower.includes("icon") ||
-      lower.includes("avatar") ||
-      lower.includes("facebook") ||
-      lower.includes("instagram")
-    ) {
-      continue;
-    }
-
-    return makeAbsoluteUrl(
-      image,
-      productUrl
-    );
-  }
-
-
-  // -----------------------------------------
-  // NOTHING FOUND
-  // -----------------------------------------
-
-  return null;
-}
-
-
-// =================================================
-// EXTRACT IMAGE FROM IMG TAG
-// =================================================
-
-function extractImageFromTag(tag) {
-
-  // src
-  let match = tag.match(
-    /\bsrc=["']([^"']+)["']/i
-  );
-
-  if (match) {
-    return decodeHtml(match[1]);
-  }
-
-  // data-src
-  match = tag.match(
-    /\bdata-src=["']([^"']+)["']/i
-  );
-
-  if (match) {
-    return decodeHtml(match[1]);
-  }
-
-  // data-lazy-src
-  match = tag.match(
-    /\bdata-lazy-src=["']([^"']+)["']/i
-  );
-
-  if (match) {
-    return decodeHtml(match[1]);
-  }
-
-  // srcset
-  match = tag.match(
-    /\bsrcset=["']([^"']+)["']/i
-  );
-
-  if (match) {
-
-    const firstImage =
-      match[1]
-        .split(",")[0]
-        .trim()
-        .split(/\s+/)[0];
-
-    if (firstImage) {
-      return decodeHtml(firstImage);
-    }
-  }
-
-  return null;
-}
-
-
-// =================================================
-// MAKE ABSOLUTE URL
-// =================================================
-
-function makeAbsoluteUrl(
-  imageUrl,
-  productUrl
-) {
-
-  if (!imageUrl) {
-    return null;
-  }
-
-  imageUrl = imageUrl.trim();
-
-  // Ignore data URLs
-  if (
-    imageUrl.startsWith("data:")
-  ) {
-    return null;
-  }
-
-  // Already absolute
-  if (
-    imageUrl.startsWith("http://") ||
-    imageUrl.startsWith("https://")
-  ) {
-    return imageUrl;
-  }
-
-  // Protocol-relative
-  if (imageUrl.startsWith("//")) {
-    return "https:" + imageUrl;
-  }
-
-  try {
-
-    return new URL(
-      imageUrl,
-      productUrl
-    ).href;
-
-  } catch (error) {
-    return null;
-  }
-}
-
-
-// =================================================
+// ============================================================
 // EXTRACT PRODUCT PRICE
-// =================================================
+// ============================================================
 
 function extractProductPrice(html) {
 
-  // -----------------------------------------
-  // METHOD 1: JSON-LD PRODUCT DATA
-  // -----------------------------------------
+  // ----------------------------------------------------------
+  // METHOD 1: JSON-LD
+  // ----------------------------------------------------------
 
   const jsonLdMatches = [
     ...html.matchAll(
@@ -666,56 +336,72 @@ function extractProductPrice(html) {
   for (const match of jsonLdMatches) {
 
     try {
+      const data =
+        JSON.parse(
+          match[1].trim()
+        );
 
-      const data = JSON.parse(
-        match[1].trim()
-      );
+      const objects =
+        Array.isArray(data)
+          ? data
+          : [data];
 
-      const objects = Array.isArray(data)
-        ? data
-        : [data];
+      for (const object of objects) {
 
-      for (const obj of objects) {
-
-        if (!obj) {
-          continue;
-        }
-
-        // Direct product price
         if (
-          obj.offers &&
-          !Array.isArray(obj.offers) &&
-          obj.offers.price
+          object &&
+          object.offers &&
+          !Array.isArray(
+            object.offers
+          ) &&
+          object.offers.price
         ) {
 
-          const price = Number(
-            String(obj.offers.price)
-              .replace(/,/g, "")
-          );
+          const price =
+            Number(
+              String(
+                object.offers.price
+              ).replace(
+                /,/g,
+                ""
+              )
+            );
 
           if (validPrice(price)) {
             return price;
           }
         }
 
-        // Multiple offers
         if (
-          Array.isArray(obj.offers)
+          object &&
+          Array.isArray(
+            object.offers
+          )
         ) {
 
-          for (const offer of obj.offers) {
+          for (
+            const offer
+            of object.offers
+          ) {
 
             if (
               offer &&
               offer.price
             ) {
 
-              const price = Number(
-                String(offer.price)
-                  .replace(/,/g, "")
-              );
+              const price =
+                Number(
+                  String(
+                    offer.price
+                  ).replace(
+                    /,/g,
+                    ""
+                  )
+                );
 
-              if (validPrice(price)) {
+              if (
+                validPrice(price)
+              ) {
                 return price;
               }
             }
@@ -729,20 +415,25 @@ function extractProductPrice(html) {
   }
 
 
-  // -----------------------------------------
-  // METHOD 2: itemprop="price"
-  // -----------------------------------------
+  // ----------------------------------------------------------
+  // METHOD 2: itemprop price
+  // ----------------------------------------------------------
 
-  const itemPropMatch = html.match(
-    /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i
-  );
+  const itemPropMatch =
+    html.match(
+      /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i
+    );
 
   if (itemPropMatch) {
 
-    const price = Number(
-      itemPropMatch[1]
-        .replace(/,/g, "")
-    );
+    const price =
+      Number(
+        itemPropMatch[1]
+          .replace(
+            /,/g,
+            ""
+          )
+      );
 
     if (validPrice(price)) {
       return price;
@@ -750,20 +441,25 @@ function extractProductPrice(html) {
   }
 
 
-  // -----------------------------------------
-  // METHOD 3: content BEFORE itemprop
-  // -----------------------------------------
+  // ----------------------------------------------------------
+  // METHOD 3: content before itemprop
+  // ----------------------------------------------------------
 
-  const itemPropReverse = html.match(
-    /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i
-  );
+  const itemPropReverse =
+    html.match(
+      /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i
+    );
 
   if (itemPropReverse) {
 
-    const price = Number(
-      itemPropReverse[1]
-        .replace(/,/g, "")
-    );
+    const price =
+      Number(
+        itemPropReverse[1]
+          .replace(
+            /,/g,
+            ""
+          )
+      );
 
     if (validPrice(price)) {
       return price;
@@ -771,34 +467,47 @@ function extractProductPrice(html) {
   }
 
 
-  // -----------------------------------------
-  // METHOD 4: WooCommerce price block
-  // -----------------------------------------
+  // ----------------------------------------------------------
+  // METHOD 4: WooCommerce price
+  // ----------------------------------------------------------
 
-  const priceBlock = html.match(
-    /class=["'][^"']*(?:price|woocommerce-Price-amount)[^"']*["'][^>]*>([\s\S]{0,500})<\/(?:p|span|div)>/i
-  );
+  const priceBlocks = [
+    ...html.matchAll(
+      /class=["'][^"']*(?:price|woocommerce-Price-amount)[^"']*["'][^>]*>([\s\S]{0,500})<\/(?:p|span|div)>/gi
+    )
+  ];
 
-  if (priceBlock) {
+  for (
+    const block
+    of priceBlocks
+  ) {
 
     const prices =
-      extractNumbers(priceBlock[1]);
+      extractNumbers(
+        block[1]
+      );
 
-    if (prices.length) {
+    if (
+      prices.length > 0
+    ) {
 
       const price =
-        prices[prices.length - 1];
+        prices[
+          prices.length - 1
+        ];
 
-      if (validPrice(price)) {
+      if (
+        validPrice(price)
+      ) {
         return price;
       }
     }
   }
 
 
-  // -----------------------------------------
-  // METHOD 5: Rs / ₨ price
-  // -----------------------------------------
+  // ----------------------------------------------------------
+  // METHOD 5: Rs / ₨ / रु
+  // ----------------------------------------------------------
 
   const rupeeMatches = [
     ...html.matchAll(
@@ -808,57 +517,312 @@ function extractProductPrice(html) {
 
   const rupeePrices = [];
 
-  for (const match of rupeeMatches) {
+  for (
+    const match
+    of rupeeMatches
+  ) {
 
-    const price = Number(
-      match[1]
-        .replace(/,/g, "")
-    );
+    const price =
+      Number(
+        match[1]
+          .replace(
+            /,/g,
+            ""
+          )
+      );
 
-    if (validPrice(price)) {
-      rupeePrices.push(price);
+    if (
+      validPrice(price)
+    ) {
+      rupeePrices.push(
+        price
+      );
     }
   }
 
-  if (rupeePrices.length) {
+  if (
+    rupeePrices.length > 0
+  ) {
     return rupeePrices[0];
   }
 
 
-  // -----------------------------------------
-  // METHOD 6: WooCommerce bdi
-  // -----------------------------------------
+  // ----------------------------------------------------------
+  // METHOD 6: BDI
+  // ----------------------------------------------------------
 
-  const bdiMatch = html.match(
-    /<bdi[^>]*>([\s\S]*?)<\/bdi>/i
-  );
+  const bdiMatches = [
+    ...html.matchAll(
+      /<bdi[^>]*>([\s\S]*?)<\/bdi>/gi
+    )
+  ];
 
-  if (bdiMatch) {
+  for (
+    const bdiMatch
+    of bdiMatches
+  ) {
 
     const prices =
       extractNumbers(
         bdiMatch[1]
       );
 
-    if (prices.length) {
+    if (
+      prices.length > 0
+    ) {
 
       const price =
-        prices[prices.length - 1];
+        prices[
+          prices.length - 1
+        ];
 
-      if (validPrice(price)) {
+      if (
+        validPrice(price)
+      ) {
         return price;
       }
     }
   }
 
 
+  // Nothing found
   return null;
 }
 
 
-// =================================================
+// ============================================================
+// EXTRACT PRODUCT IMAGE
+// ============================================================
+
+function extractProductImage(html) {
+
+  // ----------------------------------------------------------
+  // METHOD 1: JSON-LD IMAGE
+  // ----------------------------------------------------------
+
+  const jsonLdMatches = [
+    ...html.matchAll(
+      /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
+    )
+  ];
+
+  for (
+    const match
+    of jsonLdMatches
+  ) {
+
+    try {
+
+      const data =
+        JSON.parse(
+          match[1].trim()
+        );
+
+      const objects =
+        Array.isArray(data)
+          ? data
+          : [data];
+
+      for (
+        const object
+        of objects
+      ) {
+
+        if (
+          object &&
+          object.image
+        ) {
+
+          let imageUrl = "";
+
+          if (
+            typeof object.image ===
+            "string"
+          ) {
+            imageUrl =
+              object.image;
+          }
+
+          else if (
+            Array.isArray(
+              object.image
+            ) &&
+            object.image.length > 0
+          ) {
+            imageUrl =
+              object.image[0];
+          }
+
+          else if (
+            object.image.url
+          ) {
+            imageUrl =
+              object.image.url;
+          }
+
+          if (
+            imageUrl &&
+            imageUrl.startsWith(
+              "http"
+            )
+          ) {
+            return imageUrl;
+          }
+        }
+      }
+
+    } catch (error) {
+      // Ignore invalid JSON
+    }
+  }
+
+
+  // ----------------------------------------------------------
+  // METHOD 2: og:image
+  // ----------------------------------------------------------
+
+  const ogImage =
+    html.match(
+      /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i
+    );
+
+  if (
+    ogImage &&
+    ogImage[1]
+  ) {
+
+    return decodeHtml(
+      ogImage[1]
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // METHOD 3: content before property
+  // ----------------------------------------------------------
+
+  const ogImageReverse =
+    html.match(
+      /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i
+    );
+
+  if (
+    ogImageReverse &&
+    ogImageReverse[1]
+  ) {
+
+    return decodeHtml(
+      ogImageReverse[1]
+    );
+  }
+
+
+  // ----------------------------------------------------------
+  // METHOD 4: WooCommerce product image
+  // ----------------------------------------------------------
+
+  const productImage =
+    html.match(
+      /<img[^>]*(?:wp-post-image|woocommerce-product-gallery__image|attachment-woocommerce_thumbnail)[^>]*>/i
+    );
+
+  if (
+    productImage &&
+    productImage[0]
+  ) {
+
+    const imageTag =
+      productImage[0];
+
+    const srcMatch =
+      imageTag.match(
+        /\s(?:src|data-src)=["']([^"']+)["']/i
+      );
+
+    if (
+      srcMatch &&
+      srcMatch[1]
+    ) {
+
+      return decodeHtml(
+        srcMatch[1]
+      );
+    }
+
+    // srcset fallback
+    const srcsetMatch =
+      imageTag.match(
+        /\ssrcset=["']([^"']+)["']/i
+      );
+
+    if (
+      srcsetMatch &&
+      srcsetMatch[1]
+    ) {
+
+      const firstImage =
+        srcsetMatch[1]
+          .split(",")[0]
+          .trim()
+          .split(/\s+/)[0];
+
+      if (firstImage) {
+        return decodeHtml(
+          firstImage
+        );
+      }
+    }
+  }
+
+
+  // ----------------------------------------------------------
+  // METHOD 5: Any product image
+  // ----------------------------------------------------------
+
+  const imageMatches = [
+    ...html.matchAll(
+      /<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*>/gi
+    )
+  ];
+
+  for (
+    const match
+    of imageMatches
+  ) {
+
+    const imageUrl =
+      decodeHtml(
+        match[1]
+      );
+
+    if (
+      imageUrl &&
+      imageUrl.startsWith(
+        "http"
+      ) &&
+      (
+        imageUrl.includes(
+          "neptronics"
+        ) ||
+        imageUrl.match(
+          /\.(jpg|jpeg|png|webp)/i
+        )
+      )
+    ) {
+
+      return imageUrl;
+    }
+  }
+
+
+  // No image found
+  return "";
+}
+
+
+// ============================================================
 // EXTRACT NUMBERS
-// =================================================
+// ============================================================
 
 function extractNumbers(html) {
 
@@ -875,18 +839,24 @@ function extractNumbers(html) {
   }
 
   return matches
-    .map(value =>
-      Number(
-        value.replace(/,/g, "")
-      )
+    .map(
+      value =>
+        Number(
+          value.replace(
+            /,/g,
+            ""
+          )
+        )
     )
-    .filter(validPrice);
+    .filter(
+      validPrice
+    );
 }
 
 
-// =================================================
+// ============================================================
 // VALID PRICE
-// =================================================
+// ============================================================
 
 function validPrice(price) {
 
@@ -898,43 +868,86 @@ function validPrice(price) {
 }
 
 
-// =================================================
+// ============================================================
 // CLEAN HTML
-// =================================================
+// ============================================================
 
 function cleanText(text) {
 
-  return String(text)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#8377;/gi, "₨")
-    .replace(/&#x20B9;/gi, "₨")
-    .replace(/&#8211;/gi, "-")
-    .replace(/&#8212;/gi, "-")
-    .replace(/\s+/g, " ")
+  return String(text || "")
+    .replace(
+      /<[^>]*>/g,
+      " "
+    )
+    .replace(
+      /&nbsp;/gi,
+      " "
+    )
+    .replace(
+      /&amp;/gi,
+      "&"
+    )
+    .replace(
+      /&quot;/gi,
+      '"'
+    )
+    .replace(
+      /&#8377;/gi,
+      "₨"
+    )
+    .replace(
+      /&#x20B9;/gi,
+      "₨"
+    )
+    .replace(
+      /&#8211;/gi,
+      "-"
+    )
+    .replace(
+      /&#8212;/gi,
+      "-"
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
     .trim();
 }
 
 
-// =================================================
+// ============================================================
 // DECODE HTML ENTITIES
-// =================================================
+// ============================================================
 
 function decodeHtml(text) {
 
-  return String(text)
-    .replace(/&amp;/g, "&")
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">");
+  return String(text || "")
+    .replace(
+      /&amp;/gi,
+      "&"
+    )
+    .replace(
+      /&quot;/gi,
+      '"'
+    )
+    .replace(
+      /&#39;/gi,
+      "'"
+    )
+    .replace(
+      /&lt;/gi,
+      "<"
+    )
+    .replace(
+      /&gt;/gi,
+      ">"
+    );
 }
 
 
-// =================================================
+// ============================================================
 // EXPORT
-// =================================================
+// ============================================================
 
-module.exports = searchNeptronics;
+module.exports =
+  searchNeptronics;
