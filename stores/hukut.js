@@ -1,7 +1,3 @@
-// ============================================================
-// HUKUT STORE SEARCH
-// ============================================================
-
 async function searchHukut(query) {
   const searchTerm = String(query || "").trim();
 
@@ -10,65 +6,65 @@ async function searchHukut(query) {
   }
 
   try {
+    const searchUrl =
+      "https://hukut.com/search?q=" +
+      encodeURIComponent(searchTerm);
+
     console.log(`Hukut: searching for "${searchTerm}"`);
+    console.log(`Hukut URL: ${searchUrl}`);
 
-    // Hukut's product pages are indexed under /products.
-    // We first request the main site and look for matching
-    // product links.
-
-    const response = await fetch(
-      "https://hukut.com/",
-      {
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-          "Accept":
-            "text/html,application/xhtml+xml"
-        }
+    const response = await fetch(searchUrl, {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+        "Accept":
+          "text/html,application/xhtml+xml"
       }
-    );
+    });
 
     if (!response.ok) {
       console.log(
-        "Hukut homepage status:",
+        "Hukut search status:",
         response.status
       );
       return [];
     }
 
-    const homeHtml = await response.text();
+    const html = await response.text();
 
-    const searchLower =
-      searchTerm.toLowerCase();
+    console.log(
+      `Hukut: received ${html.length} characters`
+    );
 
-    const productUrls = [];
-    const seen = new Set();
+    const results = [];
 
-    // ========================================================
+    // -----------------------------------------
     // FIND PRODUCT LINKS
-    // ========================================================
+    // -----------------------------------------
 
-    const matches = [
-      ...homeHtml.matchAll(
+    const linkMatches = [
+      ...html.matchAll(
         /href\s*=\s*["']([^"']+)["']/gi
       )
     ];
 
-    for (const match of matches) {
-      let url = decodeHtml(match[1]);
+    const productUrls = [];
+    const seen = new Set();
 
-      if (!url) {
-        continue;
-      }
+    for (const match of linkMatches) {
+      let url = match[1];
 
-      if (url.startsWith("/")) {
-        url =
-          "https://hukut.com" +
-          url;
-      }
+      url = decodeHtml(url);
 
-      if (!url.startsWith("http")) {
-        continue;
+      if (
+        !url.startsWith("http://") &&
+        !url.startsWith("https://")
+      ) {
+        if (url.startsWith("/")) {
+          url = "https://hukut.com" + url;
+        } else {
+          continue;
+        }
       }
 
       if (!url.includes("hukut.com")) {
@@ -77,18 +73,23 @@ async function searchHukut(query) {
 
       url = url.split("?")[0];
 
-      // Avoid category/navigation pages.
+      // Ignore non-product pages
       if (
-        url.includes("/products") ||
+        url.includes("/search") ||
         url.includes("/category") ||
+        url.includes("/product-category") ||
         url.includes("/about") ||
         url.includes("/contact") ||
-        url.includes("/offers") ||
-        url.includes("/sales") ||
-        url.includes("/faq") ||
-        url.includes("/privacy") ||
-        url.includes("/returns") ||
-        url.includes("/warranty")
+        url.includes("/compare") ||
+        url.includes("/cart") ||
+        url.includes("/login")
+      ) {
+        continue;
+      }
+
+      if (
+        url === "https://hukut.com/" ||
+        url === "https://hukut.com"
       ) {
         continue;
       }
@@ -100,68 +101,65 @@ async function searchHukut(query) {
     }
 
     console.log(
-      `Hukut: found ${productUrls.length} links on homepage`
+      `Hukut: found ${productUrls.length} possible product links`
     );
 
-    const results = [];
+    // -----------------------------------------
+    // CHECK PRODUCT PAGES
+    // -----------------------------------------
 
-    // ========================================================
-    // CHECK PRODUCT LINKS
-    // ========================================================
+    const urlsToCheck =
+      productUrls.slice(0, 15);
 
-    for (
-      const productUrl of productUrls.slice(0, 30)
-    ) {
+    for (const productUrl of urlsToCheck) {
       try {
         const productResponse =
-          await fetch(
-            productUrl,
-            {
-              headers: {
-                "User-Agent":
-                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-                "Accept":
-                  "text/html,application/xhtml+xml"
-              }
+          await fetch(productUrl, {
+            headers: {
+              "User-Agent":
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+              "Accept":
+                "text/html,application/xhtml+xml"
             }
-          );
+          });
 
         if (!productResponse.ok) {
           continue;
         }
 
-        const html =
+        const productHtml =
           await productResponse.text();
 
-        // ====================================================
+        // -----------------------------------------
         // PRODUCT NAME
-        // ====================================================
+        // -----------------------------------------
 
         let name = "";
 
         const h1Match =
-          html.match(
+          productHtml.match(
             /<h1[^>]*>([\s\S]*?)<\/h1>/i
           );
 
         if (h1Match) {
-          name =
-            cleanText(
-              h1Match[1]
-            );
+          name = cleanText(h1Match[1]);
         }
 
+        // Fallback title
         if (!name) {
           const titleMatch =
-            html.match(
+            productHtml.match(
               /<title[^>]*>([\s\S]*?)<\/title>/i
             );
 
           if (titleMatch) {
-            name =
-              cleanText(
-                titleMatch[1]
-              );
+            name = cleanText(
+              titleMatch[1]
+                .replace(
+                  /\s*[-|].*$/,
+                  ""
+                )
+            );
           }
         }
 
@@ -169,65 +167,70 @@ async function searchHukut(query) {
           continue;
         }
 
-        // ====================================================
+        // -----------------------------------------
         // MATCH SEARCH TERM
-        // ====================================================
+        // -----------------------------------------
 
         const nameLower =
           name.toLowerCase();
 
-        const words =
+        const searchLower =
+          searchTerm.toLowerCase();
+
+        const searchWords =
           searchLower
             .split(/\s+/)
-            .filter(
-              word =>
-                word.length > 1
-            );
+            .filter(Boolean);
 
-        const matchesQuery =
-          nameLower.includes(
-            searchLower
-          ) ||
-          words.some(
+        const matchesSearch =
+          nameLower.includes(searchLower) ||
+          searchWords.some(
             word =>
+              word.length >= 3 &&
               nameLower.includes(word)
           );
 
-        if (!matchesQuery) {
+        if (!matchesSearch) {
           continue;
         }
 
-        // ====================================================
+        // -----------------------------------------
         // PRICE
-        // ====================================================
+        // -----------------------------------------
 
         const price =
-          extractHukutPrice(html);
+          extractHukutPrice(productHtml);
 
-        if (!validPrice(price)) {
+        if (!price) {
+          console.log(
+            `Hukut: no price found for ${name}`
+          );
           continue;
         }
 
-        // ====================================================
+        // -----------------------------------------
         // IMAGE
-        // ========================================================
+        // -----------------------------------------
 
         const image =
-          extractHukutImage(html);
+          extractHukutImage(productHtml);
 
-        // ====================================================
+        // -----------------------------------------
         // AVAILABILITY
-        // ========================================================
+        // -----------------------------------------
 
         let availability =
           "Check store";
 
         const lowerHtml =
-          html.toLowerCase();
+          productHtml.toLowerCase();
 
         if (
           lowerHtml.includes(
             "out of stock"
+          ) ||
+          lowerHtml.includes(
+            "currently unavailable"
           ) ||
           lowerHtml.includes(
             "currently unavailable"
@@ -240,52 +243,40 @@ async function searchHukut(query) {
             "in stock"
           ) ||
           lowerHtml.includes(
-            "available today"
+            "add to cart"
           )
         ) {
           availability =
             "Available";
         }
 
-        // ====================================================
-        // ADD RESULT
-        // ========================================================
-
-        results.push({
-          name:
-            name,
-
-          store:
-            "Hukut",
-
-          price:
-            price,
-
-          shipping:
-            0,
-
-          total:
-            price,
-
-          availability:
-            availability,
-
-          url:
-            productUrl,
-
-          image:
-            image,
-
-          source:
-            "Hukut",
-
-          lastUpdated:
-            new Date().toISOString()
-        });
-
         console.log(
           `Hukut: ${name} -> price: ${price}`
         );
+
+        if (image) {
+          console.log(
+            `Hukut image: ${image}`
+          );
+        }
+
+        // -----------------------------------------
+        // ADD RESULT
+        // -----------------------------------------
+
+        results.push({
+          name: name,
+          store: "Hukut",
+          price: price,
+          shipping: 0,
+          total: price,
+          availability: availability,
+          url: productUrl,
+          image: image,
+          source: "Hukut",
+          lastUpdated:
+            new Date().toISOString()
+        });
 
       } catch (error) {
         console.log(
@@ -312,22 +303,24 @@ async function searchHukut(query) {
 }
 
 
-// ============================================================
-// PRICE EXTRACTION
-// ============================================================
+// =================================================
+// EXTRACT HUKUT PRICE
+// =================================================
 
 function extractHukutPrice(html) {
 
-  // JSON-LD
-  const jsonLdMatches = [
+  // -----------------------------------------
+  // METHOD 1: JSON-LD
+  // -----------------------------------------
+
+  const jsonMatches = [
     ...html.matchAll(
       /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
     )
   ];
 
-  for (
-    const match of jsonLdMatches
-  ) {
+  for (const match of jsonMatches) {
+
     try {
       const data =
         JSON.parse(
@@ -339,59 +332,103 @@ function extractHukutPrice(html) {
           ? data
           : [data];
 
-      for (
-        const obj of objects
-      ) {
+      for (const obj of objects) {
+
         if (
           obj &&
           obj.offers &&
-          obj.offers.price
+          !Array.isArray(obj.offers)
         ) {
+
           const price =
             Number(
               String(
-                obj.offers.price
-              ).replace(
-                /,/g,
-                ""
+                obj.offers.price || ""
               )
+                .replace(/,/g, "")
             );
 
-          if (
-            validPrice(price)
-          ) {
+          if (validPrice(price)) {
             return price;
+          }
+        }
+
+        if (
+          obj &&
+          Array.isArray(obj.offers)
+        ) {
+
+          for (
+            const offer of obj.offers
+          ) {
+
+            const price =
+              Number(
+                String(
+                  offer.price || ""
+                )
+                  .replace(/,/g, "")
+              );
+
+            if (validPrice(price)) {
+              return price;
+            }
           }
         }
       }
 
     } catch (error) {
-      // Ignore invalid JSON-LD
+      // Ignore invalid JSON
     }
   }
 
-  // Rs price
-  const rupeeMatches = [
+  // -----------------------------------------
+  // METHOD 2: Rs. / NPR price
+  // -----------------------------------------
+
+  const priceMatches = [
     ...html.matchAll(
-      /Rs\.?\s*([\d,]+(?:\.\d{1,2})?)/gi
+      /(?:Rs\.?|NPR|₨)\s*([\d,]+(?:\.\d{1,2})?)/gi
     )
   ];
 
-  for (
-    const match of rupeeMatches
-  ) {
+  const prices = [];
+
+  for (const match of priceMatches) {
+
     const price =
       Number(
         match[1]
-          .replace(
-            /,/g,
-            ""
-          )
+          .replace(/,/g, "")
       );
 
-    if (
-      validPrice(price)
-    ) {
+    if (validPrice(price)) {
+      prices.push(price);
+    }
+  }
+
+  if (prices.length) {
+    return prices[0];
+  }
+
+  // -----------------------------------------
+  // METHOD 3: itemprop price
+  // -----------------------------------------
+
+  const itemPrice =
+    html.match(
+      /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i
+    );
+
+  if (itemPrice) {
+
+    const price =
+      Number(
+        itemPrice[1]
+          .replace(/,/g, "")
+      );
+
+    if (validPrice(price)) {
       return price;
     }
   }
@@ -400,65 +437,77 @@ function extractHukutPrice(html) {
 }
 
 
-// ============================================================
-// IMAGE EXTRACTION
-// ============================================================
+// =================================================
+// EXTRACT HUKUT IMAGE
+// =================================================
 
 function extractHukutImage(html) {
 
-  // og:image
+  // -----------------------------------------
+  // METHOD 1: og:image
+  // -----------------------------------------
+
   const ogImage =
     html.match(
       /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i
     );
 
-  if (
-    ogImage &&
-    ogImage[1]
-  ) {
-    return makeAbsoluteUrl(
-      decodeHtml(
-        ogImage[1]
-      )
+  if (ogImage) {
+    return decodeHtml(
+      ogImage[1]
     );
   }
 
-  // Reverse og:image
-  const reverse =
+  // -----------------------------------------
+  // METHOD 2: twitter:image
+  // -----------------------------------------
+
+  const twitterImage =
     html.match(
-      /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i
+      /<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i
     );
 
-  if (
-    reverse &&
-    reverse[1]
-  ) {
-    return makeAbsoluteUrl(
-      decodeHtml(
-        reverse[1]
-      )
+  if (twitterImage) {
+    return decodeHtml(
+      twitterImage[1]
     );
   }
 
-  // img tags
-  const images = [
+  // -----------------------------------------
+  // METHOD 3: first large image
+  // -----------------------------------------
+
+  const imageMatches = [
     ...html.matchAll(
-      /<img[^>]+(?:src|data-src)=["']([^"']+)["']/gi
+      /<img[^>]*src=["']([^"']+)["']/gi
     )
   ];
 
-  for (
-    const match of images
-  ) {
-    const url =
-      makeAbsoluteUrl(
-        decodeHtml(
-          match[1]
-        )
-      );
+  for (const match of imageMatches) {
 
-    if (url) {
-      return url;
+    let image =
+      decodeHtml(match[1]);
+
+    if (
+      image.startsWith("//")
+    ) {
+      image =
+        "https:" + image;
+    }
+
+    if (
+      image.startsWith("/")
+    ) {
+      image =
+        "https://hukut.com" + image;
+    }
+
+    if (
+      image.startsWith("http") &&
+      !image.includes("logo") &&
+      !image.includes("icon")
+    ) {
+      return image;
     }
   }
 
@@ -466,38 +515,9 @@ function extractHukutImage(html) {
 }
 
 
-// ============================================================
-// URL
-// ============================================================
-
-function makeAbsoluteUrl(url) {
-
-  if (!url) {
-    return "";
-  }
-
-  if (
-    url.startsWith("//")
-  ) {
-    return "https:" + url;
-  }
-
-  if (
-    url.startsWith("/")
-  ) {
-    return (
-      "https://hukut.com" +
-      url
-    );
-  }
-
-  return url;
-}
-
-
-// ============================================================
+// =================================================
 // VALID PRICE
-// ============================================================
+// =================================================
 
 function validPrice(price) {
 
@@ -509,82 +529,100 @@ function validPrice(price) {
 }
 
 
-// ============================================================
-// CLEAN TEXT
-// ============================================================
+// =================================================
+// CLEAN HTML
+// =================================================
 
 function cleanText(text) {
 
-  return String(
-    text || ""
-  )
+  return String(text)
+
     .replace(
       /<[^>]*>/g,
       " "
     )
+
     .replace(
       /&nbsp;/gi,
       " "
     )
+
     .replace(
       /&amp;/gi,
       "&"
     )
+
     .replace(
       /&quot;/gi,
       '"'
     )
+
     .replace(
       /&#8377;/gi,
       "₨"
     )
+
     .replace(
       /&#x20B9;/gi,
       "₨"
     )
+
+    .replace(
+      /&#8211;/gi,
+      "-"
+    )
+
+    .replace(
+      /&#8212;/gi,
+      "-"
+    )
+
     .replace(
       /\s+/g,
       " "
     )
+
     .trim();
 }
 
 
-// ============================================================
+// =================================================
 // DECODE HTML
-// ============================================================
+// =================================================
 
 function decodeHtml(text) {
 
-  return String(
-    text || ""
-  )
+  return String(text)
+
     .replace(
-      /&amp;/gi,
+      /&amp;/g,
       "&"
     )
+
     .replace(
-      /&quot;/gi,
+      /&quot;/g,
       '"'
     )
+
     .replace(
-      /&#39;/gi,
+      /&#39;/g,
       "'"
     )
+
     .replace(
-      /&lt;/gi,
+      /&lt;/g,
       "<"
     )
+
     .replace(
-      /&gt;/gi,
+      /&gt;/g,
       ">"
     );
 }
 
 
-// ============================================================
+// =================================================
 // EXPORT
-// ============================================================
+// =================================================
 
-module.exports =
-  searchHukut;
+module.exports = searchHukut;
