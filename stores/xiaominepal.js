@@ -3,23 +3,23 @@ const BASE_URL = "https://www.mi.com/np";
 const HEADERS = {
   "User-Agent":
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
-
-  Accept:
+  "Accept":
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-
-  "Accept-Language": "en-US,en;q=0.9",
-
-  "Cache-Control": "no-cache"
+  "Accept-Language":
+    "en-US,en;q=0.9",
+  "Cache-Control":
+    "no-cache"
 };
 
 
 // ============================================================
-// XIAOMI NEPAL SEARCH
+// SEARCH
 // ============================================================
 
 async function searchXiaomiNepal(query) {
 
-  const searchTerm = String(query || "").trim();
+  const searchTerm =
+    String(query || "").trim();
 
   if (!searchTerm) {
     return [];
@@ -31,37 +31,34 @@ async function searchXiaomiNepal(query) {
 
   try {
 
-    // Xiaomi exposes products through category/list pages.
     const catalogPages = [
-
       `${BASE_URL}/product-list/`,
-
       `${BASE_URL}/product-list/phone/`,
-
       `${BASE_URL}/product-list/tablets/`,
-
       `${BASE_URL}/product-list/office/`,
-
       `${BASE_URL}/product-list/xiaomi/`
-
     ];
 
-    const allProductUrls = new Set();
+    const productUrls = new Set();
 
     // ----------------------------------------------------------
-    // GET CATALOG PAGES
+    // FIND PRODUCT LINKS
     // ----------------------------------------------------------
 
-    for (const catalogUrl of catalogPages) {
+    for (
+      const catalogUrl of catalogPages
+    ) {
 
       try {
 
         console.log(
-          `Xiaomi Nepal: checking catalog ${catalogUrl}`
+          `Xiaomi Nepal: checking ${catalogUrl}`
         );
 
         const response =
-          await fetchWithTimeout(catalogUrl);
+          await fetchWithTimeout(
+            catalogUrl
+          );
 
         console.log(
           `Xiaomi Nepal catalog status: ${response.status}`
@@ -81,8 +78,10 @@ async function searchXiaomiNepal(query) {
         const urls =
           extractProductUrls(html);
 
-        for (const url of urls) {
-          allProductUrls.add(url);
+        for (
+          const url of urls
+        ) {
+          productUrls.add(url);
         }
 
         console.log(
@@ -100,10 +99,10 @@ async function searchXiaomiNepal(query) {
     }
 
     console.log(
-      `Xiaomi Nepal: total unique products ${allProductUrls.size}`
+      `Xiaomi Nepal: total unique products ${productUrls.size}`
     );
 
-    if (allProductUrls.size === 0) {
+    if (!productUrls.size) {
       return [];
     }
 
@@ -113,10 +112,10 @@ async function searchXiaomiNepal(query) {
 
     const results = [];
 
-    const productUrls =
-      Array.from(allProductUrls);
-
-    for (const productUrl of productUrls.slice(0, 40)) {
+    for (
+      const productUrl of
+      Array.from(productUrls).slice(0, 50)
+    ) {
 
       try {
 
@@ -125,7 +124,9 @@ async function searchXiaomiNepal(query) {
         );
 
         const response =
-          await fetchWithTimeout(productUrl);
+          await fetchWithTimeout(
+            productUrl
+          );
 
         console.log(
           `Xiaomi Nepal product status: ${response.status}`
@@ -142,9 +143,6 @@ async function searchXiaomiNepal(query) {
           extractProductName(html);
 
         if (!name) {
-          console.log(
-            "Xiaomi Nepal: product name not found"
-          );
           continue;
         }
 
@@ -153,7 +151,7 @@ async function searchXiaomiNepal(query) {
         );
 
         // ------------------------------------------------------
-        // MATCH SEARCH
+        // SEARCH MATCH
         // ------------------------------------------------------
 
         if (
@@ -175,21 +173,20 @@ async function searchXiaomiNepal(query) {
         // ------------------------------------------------------
 
         const price =
-          extractPrice(html);
+          extractXiaomiPrice(
+            html
+          );
 
         console.log(
-          `Xiaomi Nepal price: ${price}`
+          `Xiaomi Nepal extracted price: ${price}`
         );
 
-        /*
-         * Some Xiaomi product pages may not expose price.
-         * We skip those because PriceFinder needs a usable price.
-         */
-
-        if (!validPrice(price)) {
+        if (
+          !validPrice(price)
+        ) {
 
           console.log(
-            `Xiaomi Nepal: no valid price for "${name}"`
+            `Xiaomi Nepal: no reliable NPR price for "${name}"`
           );
 
           continue;
@@ -200,7 +197,7 @@ async function searchXiaomiNepal(query) {
         // ------------------------------------------------------
 
         const image =
-          extractImage(html);
+          extractProductImage(html);
 
         // ------------------------------------------------------
         // AVAILABILITY
@@ -213,21 +210,26 @@ async function searchXiaomiNepal(query) {
 
           name,
 
-          store: "Xiaomi Nepal",
+          store:
+            "Xiaomi Nepal",
 
           price,
 
-          shipping: 0,
+          shipping:
+            0,
 
-          total: price,
+          total:
+            price,
 
           availability,
 
-          url: productUrl,
+          url:
+            productUrl,
 
           image,
 
-          source: "Xiaomi Nepal",
+          source:
+            "Xiaomi Nepal",
 
           lastUpdated:
             new Date().toISOString()
@@ -275,11 +277,8 @@ async function fetchWithTimeout(url) {
     url,
     {
       method: "GET",
-
       headers: HEADERS,
-
       redirect: "follow",
-
       signal:
         AbortSignal.timeout(20000)
     }
@@ -289,22 +288,22 @@ async function fetchWithTimeout(url) {
 
 
 // ============================================================
-// PRODUCT URL EXTRACTION
+// PRODUCT URLS
 // ============================================================
 
 function extractProductUrls(html) {
 
   const urls = [];
-
-  const seen =
-    new Set();
+  const seen = new Set();
 
   const matches =
     html.matchAll(
       /href\s*=\s*["']([^"']+)["']/gi
     );
 
-  for (const match of matches) {
+  for (
+    const match of matches
+  ) {
 
     let url =
       decodeHtml(match[1]);
@@ -332,44 +331,23 @@ function extractProductUrls(html) {
         .split("?")[0]
         .split("#")[0];
 
-    // --------------------------------------------------------
-    // ONLY XIAOMI NEPAL
-    // --------------------------------------------------------
-
     if (
       !url.startsWith(BASE_URL)
     ) {
       continue;
     }
 
-    let pathname;
-
-    try {
-
-      pathname =
-        new URL(url)
-          .pathname
-          .toLowerCase();
-
-    } catch {
-
-      continue;
-
-    }
-
-    // --------------------------------------------------------
-    // IGNORE ASSETS
-    // --------------------------------------------------------
+    const pathname =
+      new URL(url)
+        .pathname
+        .toLowerCase();
 
     if (
-      pathname.includes("/assets/") ||
-      pathname.includes("/static/") ||
-      pathname.includes("/cdn/") ||
-      pathname.includes("/images/")
+      pathname.includes("/support/") ||
+      pathname.includes("/about/") ||
+      pathname.includes("/service/")
     ) {
-
       continue;
-
     }
 
     if (
@@ -377,86 +355,21 @@ function extractProductUrls(html) {
         pathname
       )
     ) {
-
       continue;
-
     }
-
-    // --------------------------------------------------------
-    // IGNORE GENERAL WEBSITE PAGES
-    // --------------------------------------------------------
-
-    const blocked = [
-
-      "/np",
-
-      "/np/",
-
-      "/np/index.html",
-
-      "/np/sitemap/",
-
-      "/np/support/",
-
-      "/np/about/",
-
-      "/np/service/",
-
-      "/np/store/"
-
-    ];
 
     if (
-      blocked.includes(pathname)
+      pathname === "/np/" ||
+      pathname === "/np"
     ) {
-
       continue;
-
     }
 
-    // --------------------------------------------------------
-    // PRODUCT-LIST PAGES THEMSELVES ARE NOT PRODUCTS
-    // --------------------------------------------------------
+    const isProduct =
+      pathname.includes("/np/product/") ||
+      pathname.includes("/np/product-detail/");
 
-    if (
-      pathname.includes("/product-list/")
-    ) {
-
-      /*
-       * Product list pages contain the actual product links,
-       * but the list page itself should not become a result.
-       */
-
-      const segments =
-        pathname
-          .split("/")
-          .filter(Boolean);
-
-      if (
-        segments.length <= 3
-      ) {
-
-        continue;
-
-      }
-
-    }
-
-    /*
-     * Xiaomi product links can use several URL structures.
-     *
-     * We accept likely product pages but reject obvious
-     * navigation/category URLs.
-     */
-
-    const likelyProduct =
-      pathname.includes("/product/") ||
-      pathname.includes("/product-detail/") ||
-      pathname.match(
-        /\/np\/[^/]+\/[^/]+\/?$/
-      );
-
-    if (!likelyProduct) {
+    if (!isProduct) {
       continue;
     }
 
@@ -465,7 +378,6 @@ function extractProductUrls(html) {
     ) {
 
       seen.add(url);
-
       urls.push(url);
 
     }
@@ -484,23 +396,19 @@ function extractProductName(html) {
 
   const patterns = [
 
-    // JSON-LD
-    /"name"\s*:\s*"([^"]{2,200})"/i,
-
-    // OG title
     /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i,
 
     /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i,
 
-    // H1
     /<h1[^>]*>([\s\S]*?)<\/h1>/i,
 
-    // Title
     /<title[^>]*>([\s\S]*?)<\/title>/i
 
   ];
 
-  for (const pattern of patterns) {
+  for (
+    const pattern of patterns
+  ) {
 
     const match =
       html.match(pattern);
@@ -509,29 +417,18 @@ function extractProductName(html) {
       !match ||
       !match[1]
     ) {
-
       continue;
-
     }
 
-    let name =
+    const name =
       cleanText(
-        decodeHtml(
-          match[1]
+        decodeHtml(match[1])
+      )
+        .replace(
+          /\s*[-|–—]\s*Xiaomi.*$/i,
+          ""
         )
-      );
-
-    name =
-      name.replace(
-        /\s*[-|–—]\s*Xiaomi.*$/i,
-        ""
-      );
-
-    name =
-      name.replace(
-        /\s*[-|–—]\s*Redmi.*$/i,
-        ""
-      );
+        .trim();
 
     if (name) {
       return name;
@@ -544,21 +441,25 @@ function extractProductName(html) {
 
 
 // ============================================================
-// PRICE
+// IMPROVED PRICE EXTRACTION
 // ============================================================
 
-function extractPrice(html) {
+function extractXiaomiPrice(html) {
 
   // ----------------------------------------------------------
-  // JSON-LD
+  // METHOD 1
+  // JSON-LD PRODUCT OFFERS
   // ----------------------------------------------------------
 
-  const jsonMatches =
-    html.matchAll(
+  const jsonMatches = [
+    ...html.matchAll(
       /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
-    );
+    )
+  ];
 
-  for (const match of jsonMatches) {
+  for (
+    const match of jsonMatches
+  ) {
 
     try {
 
@@ -572,61 +473,46 @@ function extractPrice(html) {
           ? data
           : [data];
 
-      for (const obj of objects) {
+      for (
+        const object of objects
+      ) {
 
-        if (!obj) {
+        if (
+          !object ||
+          !object.offers
+        ) {
           continue;
         }
 
-        if (
-          obj.offers &&
-          obj.offers.price
+        const offers =
+          Array.isArray(object.offers)
+            ? object.offers
+            : [object.offers];
+
+        for (
+          const offer of offers
         ) {
+
+          if (
+            !offer
+          ) {
+            continue;
+          }
 
           const price =
             parsePrice(
-              obj.offers.price
+              offer.price
             );
 
           if (
             validPrice(price)
           ) {
 
+            console.log(
+              `Xiaomi Nepal: price from JSON-LD = ${price}`
+            );
+
             return price;
-
-          }
-
-        }
-
-        if (
-          Array.isArray(
-            obj.offers
-          )
-        ) {
-
-          for (
-            const offer of obj.offers
-          ) {
-
-            if (
-              offer &&
-              offer.price
-            ) {
-
-              const price =
-                parsePrice(
-                  offer.price
-                );
-
-              if (
-                validPrice(price)
-              ) {
-
-                return price;
-
-              }
-
-            }
 
           }
 
@@ -642,8 +528,85 @@ function extractPrice(html) {
 
   }
 
+
   // ----------------------------------------------------------
-  // ITEMPROP
+  // METHOD 2
+  // EXPLICIT NPR / RS PRICE
+  //
+  // This is deliberately checked BEFORE generic numbers.
+  // ----------------------------------------------------------
+
+  const rupeePatterns = [
+
+    /(?:NPR|Rs\.?|₨|रु\.?)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
+
+    /([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:NPR|Rs\.?|₨|रु\.?)/gi
+
+  ];
+
+  const rupeePrices = [];
+
+  for (
+    const pattern of rupeePatterns
+  ) {
+
+    const matches =
+      html.matchAll(pattern);
+
+    for (
+      const match of matches
+    ) {
+
+      const price =
+        parsePrice(
+          match[1]
+        );
+
+      if (
+        validPrice(price)
+      ) {
+
+        rupeePrices.push(
+          price
+        );
+
+      }
+
+    }
+
+  }
+
+  if (
+    rupeePrices.length
+  ) {
+
+    // Prefer realistic Nepalese product prices.
+    const realistic =
+      rupeePrices.filter(
+        price =>
+          price >= 500
+      );
+
+    if (
+      realistic.length
+    ) {
+
+      console.log(
+        `Xiaomi Nepal: explicit NPR price = ${realistic[0]}`
+      );
+
+      return realistic[0];
+
+    }
+
+    return rupeePrices[0];
+
+  }
+
+
+  // ----------------------------------------------------------
+  // METHOD 3
+  // ITEMPROP PRICE
   // ----------------------------------------------------------
 
   const itemPatterns = [
@@ -652,7 +615,7 @@ function extractPrice(html) {
 
     /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i,
 
-    /itemprop=["']price["'][^>]*>([\d,.]+)</i
+    /itemprop=["']price["'][^>]*value=["']([\d,.]+)["']/i
 
   ];
 
@@ -663,61 +626,9 @@ function extractPrice(html) {
     const match =
       html.match(pattern);
 
-    if (match) {
-
-      const price =
-        parsePrice(match[1]);
-
-      if (
-        validPrice(price)
-      ) {
-
-        return price;
-
-      }
-
+    if (!match) {
+      continue;
     }
-
-  }
-
-  // ----------------------------------------------------------
-  // DATA PRICE
-  // ----------------------------------------------------------
-
-  const dataPrice =
-    html.match(
-      /data-price=["']([\d,.]+)["']/i
-    );
-
-  if (dataPrice) {
-
-    const price =
-      parsePrice(
-        dataPrice[1]
-      );
-
-    if (
-      validPrice(price)
-    ) {
-
-      return price;
-
-    }
-
-  }
-
-  // ----------------------------------------------------------
-  // RUPEE / NPR
-  // ----------------------------------------------------------
-
-  const rupeeMatches =
-    html.matchAll(
-      /(?:Rs\.?|NPR|₨|रु\.?)\s*([\d,]+(?:\.\d{1,2})?)/gi
-    );
-
-  for (
-    const match of rupeeMatches
-  ) {
 
     const price =
       parsePrice(
@@ -734,39 +645,50 @@ function extractPrice(html) {
 
   }
 
+
   // ----------------------------------------------------------
-  // COMMON PRICE CLASS
+  // METHOD 4
+  // PRICE-RELATED HTML
   // ----------------------------------------------------------
 
-  const priceBlocks =
-    html.matchAll(
-      /class=["'][^"']*(?:price|amount)[^"']*["'][^>]*>([\s\S]{0,500})<\/(?:span|div|p)>/gi
-    );
+  const priceBlocks = [
+    ...html.matchAll(
+      /class=["'][^"']*(?:price|sale-price|selling-price|current-price|product-price)[^"']*["'][^>]*>([\s\S]{0,1000})<\/(?:span|div|p|strong|b)>/gi
+    )
+  ];
 
   for (
     const block of priceBlocks
   ) {
 
-    const numbers =
-      extractNumbers(
-        block[1]
+    const rupee =
+      block[1].match(
+        /(?:NPR|Rs\.?|₨|रु\.?)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i
       );
 
-    for (
-      const number of numbers
-    ) {
+    if (rupee) {
+
+      const price =
+        parsePrice(
+          rupee[1]
+        );
 
       if (
-        validPrice(number)
+        validPrice(price)
       ) {
 
-        return number;
+        return price;
 
       }
 
     }
 
   }
+
+
+  // ----------------------------------------------------------
+  // NOTHING RELIABLE FOUND
+  // ----------------------------------------------------------
 
   return null;
 }
@@ -776,7 +698,7 @@ function extractPrice(html) {
 // IMAGE
 // ============================================================
 
-function extractImage(html) {
+function extractProductImage(html) {
 
   const patterns = [
 
@@ -784,9 +706,11 @@ function extractImage(html) {
 
     /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
 
-    /<img[^>]*src=["']([^"']+)["'][^>]*>/i,
+    /<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i,
 
-    /<img[^>]*data-src=["']([^"']+)["'][^>]*>/i
+    /<img[^>]*src=["']([^"']+)["']/i,
+
+    /<img[^>]*data-src=["']([^"']+)["']/i
 
   ];
 
@@ -867,17 +791,13 @@ function matchesSearch(
     !search ||
     !product
   ) {
-
     return false;
-
   }
 
   if (
     product.includes(search)
   ) {
-
     return true;
-
   }
 
   const words =
@@ -887,10 +807,6 @@ function matchesSearch(
         word =>
           word.length >= 2
       );
-
-  if (!words.length) {
-    return false;
-  }
 
   let matched = 0;
 
@@ -903,7 +819,6 @@ function matchesSearch(
     ) {
 
       matched++;
-
       continue;
 
     }
@@ -916,7 +831,6 @@ function matchesSearch(
     ) {
 
       matched++;
-
       continue;
 
     }
@@ -968,35 +882,29 @@ function normalizeSearch(text) {
 // PRICE HELPERS
 // ============================================================
 
-function extractNumbers(text) {
-
-  const matches =
-    String(text || "").match(
-      /[\d]+(?:,[\d]{3})*(?:\.\d{1,2})?/g
-    );
-
-  if (!matches) {
-    return [];
-  }
-
-  return matches
-    .map(parsePrice)
-    .filter(validPrice);
-
-}
-
-
 function parsePrice(value) {
 
-  return Number(
+  if (
+    value === undefined ||
+    value === null
+  ) {
+    return null;
+  }
+
+  const cleaned =
     String(value)
       .replace(
         /,/g,
         ""
       )
-      .trim()
-  );
+      .trim();
 
+  const price =
+    Number(cleaned);
+
+  return Number.isFinite(price)
+    ? price
+    : null;
 }
 
 
@@ -1004,7 +912,7 @@ function validPrice(price) {
 
   return (
     Number.isFinite(price) &&
-    price > 10 &&
+    price >= 500 &&
     price < 10000000
   );
 
@@ -1024,21 +932,16 @@ function normalizeUrl(url) {
   if (
     url.startsWith("//")
   ) {
-
     return "https:" + url;
-
   }
 
   if (
     url.startsWith("/")
   ) {
-
     return BASE_URL + url;
-
   }
 
   return url;
-
 }
 
 
@@ -1125,4 +1028,5 @@ function decodeHtml(text) {
 // EXPORT
 // ============================================================
 
-module.exports = searchXiaomiNepal;
+module.exports =
+  searchXiaomiNepal;
