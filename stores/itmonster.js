@@ -1,136 +1,139 @@
+// =================================================
+// IT MONSTER STORE SCRAPER
+// =================================================
+
 async function searchITMonster(query) {
-  const searchTerm = String(query || "").trim();
+  const searchTerm = String(query || "").trim().toLowerCase();
 
   if (!searchTerm) {
     return [];
   }
 
+  console.log(
+    `IT Monster: searching for "${searchTerm}"`
+  );
+
   try {
-    const searchUrl =
-      "https://www.itmonster.com.np/shop?search=" +
-      encodeURIComponent(searchTerm);
-
-    console.log(`IT Monster: searching for "${searchTerm}"`);
-
-    const response = await fetch(searchUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-        "Accept":
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language":
-          "en-US,en;q=0.9"
-      }
-    });
-
-    if (!response.ok) {
-      console.log(
-        "IT Monster search status:",
-        response.status
-      );
-      return [];
-    }
-
-    const html = await response.text();
-
-    console.log(
-      `IT Monster: received ${html.length} characters`
-    );
-
-    // =========================================
-    // FIND PRODUCT LINKS
-    // =========================================
-
-    const matches = [
-      ...html.matchAll(
-        /href\s*=\s*["']([^"']+)["']/gi
-      )
+    // IT Monster category pages
+    const categoryUrls = [
+      "https://itmonster.com.np/accessories/audio-devices",
+      "https://itmonster.com.np/accessories/computer-accessories",
+      "https://itmonster.com.np/accessories/laptop-accessories",
+      "https://itmonster.com.np/accessories",
+      "https://itmonster.com.np/pc-components",
+      "https://itmonster.com.np/gaming",
+      "https://itmonster.com.np/desktop",
+      "https://itmonster.com.np/laptops"
     ];
 
-    const productUrls = [];
+    const allProducts = [];
     const seen = new Set();
 
-    for (const match of matches) {
-      let url = decodeHtml(match[1]);
+    // ==========================================
+    // FETCH CATEGORY PAGES
+    // ==========================================
 
-      if (url.startsWith("/")) {
-        url = "https://www.itmonster.com.np" + url;
-      }
-
-      if (!url.startsWith("http")) {
-        continue;
-      }
-
-      if (!url.includes("itmonster.com.np")) {
-        continue;
-      }
-
-      url = url.split("#")[0];
-
-      // Ignore obvious non-product pages
-      if (
-        url.includes("/shop") ||
-        url.includes("/category") ||
-        url.includes("/cart") ||
-        url.includes("/checkout") ||
-        url.includes("/contact")
-      ) {
-        continue;
-      }
-
-      if (!seen.has(url)) {
-        seen.add(url);
-        productUrls.push(url);
-      }
-    }
-
-    console.log(
-      `IT Monster: found ${productUrls.length} possible product links`
-    );
-
-    const results = [];
-
-    // Don't request too many pages
-    const urlsToCheck =
-      productUrls.slice(0, 15);
-
-    // =========================================
-    // OPEN PRODUCT PAGES
-    // =========================================
-
-    for (const productUrl of urlsToCheck) {
+    for (const categoryUrl of categoryUrls) {
       try {
-        const productResponse =
-          await fetch(productUrl, {
-            headers: {
-              "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-              "Accept":
-                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-              "Accept-Language":
-                "en-US,en;q=0.9"
-            }
-          });
+        const response = await fetch(categoryUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+            "Accept":
+              "text/html,application/xhtml+xml"
+          }
+        });
 
-        if (!productResponse.ok) {
+        if (!response.ok) {
           console.log(
-            "IT Monster product status:",
-            productResponse.status
+            `IT Monster category status: ${response.status} ${categoryUrl}`
           );
           continue;
         }
 
-        const productHtml =
-          await productResponse.text();
+        const html = await response.text();
 
-        // =====================================
+        console.log(
+          `IT Monster: received ${html.length} characters from ${categoryUrl}`
+        );
+
+        // ======================================
+        // FIND PRODUCT LINKS
+        // ======================================
+
+        const matches = [
+          ...html.matchAll(
+            /href\s*=\s*["']([^"']*\/product\/[^"']+)["']/gi
+          )
+        ];
+
+        for (const match of matches) {
+          let url = decodeHtml(match[1]);
+
+          if (!url.startsWith("http")) {
+            url =
+              "https://itmonster.com.np" +
+              (url.startsWith("/") ? url : "/" + url);
+          }
+
+          url = url.split("?")[0];
+
+          if (!seen.has(url)) {
+            seen.add(url);
+            allProducts.push(url);
+          }
+        }
+
+      } catch (error) {
+        console.log(
+          "IT Monster category error:",
+          error.message
+        );
+      }
+    }
+
+    console.log(
+      `IT Monster: found ${allProducts.length} possible product links`
+    );
+
+    const results = [];
+
+    // Don't overload the site
+    const urlsToCheck =
+      allProducts.slice(0, 40);
+
+    // ==========================================
+    // OPEN PRODUCT PAGES
+    // ==========================================
+
+    for (const productUrl of urlsToCheck) {
+      try {
+        const response = await fetch(productUrl, {
+          headers: {
+            "User-Agent":
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+            "Accept":
+              "text/html,application/xhtml+xml"
+          }
+        });
+
+        if (!response.ok) {
+          console.log(
+            `IT Monster product status: ${response.status} ${productUrl}`
+          );
+          continue;
+        }
+
+        const html = await response.text();
+
+        // ======================================
         // PRODUCT NAME
-        // =====================================
+        // ======================================
 
         let name = "";
 
         const h1Match =
-          productHtml.match(
+          html.match(
             /<h1[^>]*>([\s\S]*?)<\/h1>/i
           );
 
@@ -143,18 +146,18 @@ async function searchITMonster(query) {
         // Fallback: title
         if (!name) {
           const titleMatch =
-            productHtml.match(
+            html.match(
               /<title[^>]*>([\s\S]*?)<\/title>/i
             );
 
           if (titleMatch) {
             name = cleanText(
               titleMatch[1]
-                .replace(
-                  /\s*[-|].*$/,
-                  ""
-                )
-            );
+            )
+              .replace(
+                /\s*[-|].*$/,
+                ""
+              );
           }
         }
 
@@ -162,93 +165,75 @@ async function searchITMonster(query) {
           continue;
         }
 
-        // =====================================
-        // MAKE SURE IT MATCHES SEARCH
-        // =====================================
+        // ======================================
+        // CHECK QUERY MATCH
+        // ======================================
 
         const nameLower =
           name.toLowerCase();
 
-        const searchLower =
-          searchTerm.toLowerCase();
-
-        const searchWords =
-          searchLower
+        const words =
+          searchTerm
             .split(/\s+/)
             .filter(Boolean);
 
-        const matchesSearch =
-          nameLower.includes(searchLower) ||
-          searchWords.some(
+        const matchesQuery =
+          nameLower.includes(searchTerm) ||
+          words.some(
             word =>
               word.length >= 3 &&
               nameLower.includes(word)
           );
 
-        if (!matchesSearch) {
+        if (!matchesQuery) {
           continue;
         }
 
-        // =====================================
+        // ======================================
         // PRICE
-        // =====================================
+        // ======================================
 
         const price =
-          extractITMonsterPrice(
-            productHtml
-          );
+          extractProductPrice(html);
 
         if (!price) {
           console.log(
-            `IT Monster: price not found for ${name}`
+            `IT Monster: no price -> ${name}`
           );
           continue;
         }
 
-        // =====================================
+        // ======================================
         // IMAGE
-        // =====================================
+        // ======================================
 
         const image =
-          extractITMonsterImage(
-            productHtml
+          extractProductImage(
+            html
           );
 
-        // =====================================
+        // ======================================
         // AVAILABILITY
-        // =====================================
+        // ======================================
 
-        let availability =
-          "Check store";
-
-        const lowerHtml =
-          productHtml.toLowerCase();
-
-        if (
-          lowerHtml.includes(
-            "out of stock"
-          )
-        ) {
-          availability =
-            "Out of stock";
-        } else if (
-          lowerHtml.includes(
-            "in stock"
-          ) ||
-          lowerHtml.includes(
-            "add to cart"
-          ) ||
-          lowerHtml.includes(
-            "available"
-          )
-        ) {
-          availability =
-            "Available";
-        }
+        const availability =
+          extractAvailability(
+            html
+          );
 
         console.log(
           `IT Monster: ${name} -> price: ${price}`
         );
+
+        if (image) {
+          console.log(
+            `IT Monster image: ${image}`
+          );
+        }
+
+        // ======================================
+        // ADD RESULT
+        // ======================================
 
         results.push({
           name: name,
@@ -256,6 +241,7 @@ async function searchITMonster(query) {
           price: price,
           shipping: 0,
           total: price,
+          currency: "NPR",
           availability: availability,
           url: productUrl,
           image: image,
@@ -273,7 +259,7 @@ async function searchITMonster(query) {
     }
 
     console.log(
-      `IT Monster: returning ${results.length} results`
+      `IT Monster: returning ${results.length} results for "${searchTerm}"`
     );
 
     return results;
@@ -289,24 +275,26 @@ async function searchITMonster(query) {
 }
 
 
-// ==========================================
+// =================================================
 // EXTRACT PRICE
-// ==========================================
+// =================================================
 
-function extractITMonsterPrice(html) {
+function extractProductPrice(html) {
 
-  // ----------------------------------------
+  // ==========================================
   // METHOD 1: JSON-LD
-  // ----------------------------------------
+  // ==========================================
 
-  const jsonMatches = [
+  const jsonLdMatches = [
     ...html.matchAll(
       /<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi
     )
   ];
 
-  for (const match of jsonMatches) {
+  for (const match of jsonLdMatches) {
+
     try {
+
       const data =
         JSON.parse(
           match[1].trim()
@@ -319,26 +307,65 @@ function extractITMonsterPrice(html) {
 
       for (const obj of objects) {
 
-        if (!obj || !obj.offers) {
-          continue;
-        }
-
-        const offers =
-          Array.isArray(obj.offers)
-            ? obj.offers
-            : [obj.offers];
-
-        for (const offer of offers) {
+        if (
+          obj &&
+          obj.offers &&
+          !Array.isArray(
+            obj.offers
+          ) &&
+          obj.offers.price
+        ) {
 
           const price =
             Number(
               String(
-                offer.price || ""
-              ).replace(/,/g, "")
+                obj.offers.price
+              ).replace(
+                /,/g,
+                ""
+              )
             );
 
           if (validPrice(price)) {
             return price;
+          }
+        }
+
+        if (
+          obj &&
+          Array.isArray(
+            obj.offers
+          )
+        ) {
+
+          for (
+            const offer
+            of obj.offers
+          ) {
+
+            if (
+              offer &&
+              offer.price
+            ) {
+
+              const price =
+                Number(
+                  String(
+                    offer.price
+                  ).replace(
+                    /,/g,
+                    ""
+                  )
+                );
+
+              if (
+                validPrice(
+                  price
+                )
+              ) {
+                return price;
+              }
+            }
           }
         }
       }
@@ -348,151 +375,276 @@ function extractITMonsterPrice(html) {
     }
   }
 
-  // ----------------------------------------
-  // METHOD 2: itemprop price
-  // ----------------------------------------
 
-  const itemPrice =
+  // ==========================================
+  // METHOD 2: itemprop price
+  // ==========================================
+
+  const itemPropMatch =
     html.match(
       /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i
     );
 
-  if (itemPrice) {
+  if (itemPropMatch) {
+
     const price =
       Number(
-        itemPrice[1]
+        itemPropMatch[1]
           .replace(/,/g, "")
       );
 
-    if (validPrice(price)) {
+    if (
+      validPrice(price)
+    ) {
       return price;
     }
   }
 
-  // ----------------------------------------
-  // METHOD 3: NPR / Rs / ₨
-  // ----------------------------------------
 
-  const priceMatches = [
-    ...html.matchAll(
-      /(?:Rs\.?|NPR|₨|रु\.?)\s*([\d,]+(?:\.\d{1,2})?)/gi
-    )
-  ];
+  // ==========================================
+  // METHOD 3: Reverse itemprop
+  // ==========================================
 
-  const prices = [];
+  const reverseMatch =
+    html.match(
+      /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i
+    );
 
-  for (const match of priceMatches) {
+  if (reverseMatch) {
+
     const price =
       Number(
-        match[1]
+        reverseMatch[1]
           .replace(/,/g, "")
       );
 
-    if (validPrice(price)) {
-      prices.push(price);
+    if (
+      validPrice(price)
+    ) {
+      return price;
     }
   }
 
-  if (prices.length > 0) {
-    return prices[0];
+
+  // ==========================================
+  // METHOD 4: NPR PRICE
+  // ==========================================
+
+  const rupeeMatches = [
+    ...html.matchAll(
+      /(?:NPR|Rs\.?|रु\.?|₨)\s*([\d,]+(?:\.\d{1,2})?)/gi
+    )
+  ];
+
+  for (
+    const match
+    of rupeeMatches
+  ) {
+
+    const price =
+      Number(
+        match[1]
+          .replace(
+            /,/g,
+            ""
+          )
+      );
+
+    if (
+      validPrice(price)
+    ) {
+      return price;
+    }
+  }
+
+
+  // ==========================================
+  // METHOD 5: PRICE CLASS
+  // ==========================================
+
+  const priceBlocks = [
+    ...html.matchAll(
+      /class=["'][^"']*(?:price|amount)[^"']*["'][^>]*>([\s\S]{0,500})<\/[^>]+>/gi
+    )
+  ];
+
+  for (
+    const match
+    of priceBlocks
+  ) {
+
+    const numbers =
+      extractNumbers(
+        match[1]
+      );
+
+    if (
+      numbers.length
+    ) {
+
+      for (
+        const price
+        of numbers
+      ) {
+
+        if (
+          validPrice(price)
+        ) {
+          return price;
+        }
+      }
+    }
   }
 
   return null;
 }
 
 
-// ==========================================
+// =================================================
 // EXTRACT IMAGE
-// ==========================================
+// =================================================
 
-function extractITMonsterImage(html) {
+function extractProductImage(html) {
 
-  // og:image
-  const ogImage =
+  // ==========================================
+  // OG IMAGE
+  // ==========================================
+
+  const ogMatch =
     html.match(
       /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i
     );
 
-  if (ogImage) {
-    return makeAbsoluteImage(
-      decodeHtml(
-        ogImage[1]
-      )
+  if (ogMatch) {
+    return decodeHtml(
+      ogMatch[1]
     );
   }
 
-  // twitter:image
-  const twitterImage =
+
+  // ==========================================
+  // TWITTER IMAGE
+  // ==========================================
+
+  const twitterMatch =
     html.match(
       /<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i
     );
 
-  if (twitterImage) {
-    return makeAbsoluteImage(
-      decodeHtml(
-        twitterImage[1]
-      )
+  if (twitterMatch) {
+    return decodeHtml(
+      twitterMatch[1]
     );
   }
 
-  // First useful image
-  const images = [
-    ...html.matchAll(
-      /<img[^>]*src=["']([^"']+)["']/gi
-    )
-  ];
 
-  for (const match of images) {
+  // ==========================================
+  // PRODUCT IMAGE
+  // ==========================================
 
-    const image =
-      makeAbsoluteImage(
-        decodeHtml(
-          match[1]
-        )
+  const imageMatch =
+    html.match(
+      /<img[^>]+src=["']([^"']+)["'][^>]*>/i
+    );
+
+  if (imageMatch) {
+
+    let image =
+      decodeHtml(
+        imageMatch[1]
       );
 
     if (
-      image &&
-      !image.includes("logo") &&
-      !image.includes("icon") &&
-      !image.includes("placeholder")
+      !image.startsWith("http")
     ) {
-      return image;
+
+      image =
+        "https://itmonster.com.np" +
+        (
+          image.startsWith("/")
+            ? image
+            : "/" + image
+        );
     }
+
+    return image;
   }
 
   return "";
 }
 
 
-// ==========================================
-// ABSOLUTE IMAGE URL
-// ==========================================
+// =================================================
+// AVAILABILITY
+// =================================================
 
-function makeAbsoluteImage(url) {
+function extractAvailability(html) {
 
-  if (!url) {
-    return "";
+  const text =
+    cleanText(html)
+      .toLowerCase();
+
+  if (
+    text.includes(
+      "out of stock"
+    ) ||
+    text.includes(
+      "out-of-stock"
+    )
+  ) {
+    return "Out of stock";
   }
 
-  if (url.startsWith("//")) {
-    return "https:" + url;
+  if (
+    text.includes(
+      "in stock"
+    ) ||
+    text.includes(
+      "available"
+    )
+  ) {
+    return "Available";
   }
 
-  if (url.startsWith("/")) {
-    return (
-      "https://www.itmonster.com.np" +
-      url
-    );
-  }
-
-  return url;
+  return "Check store";
 }
 
 
-// ==========================================
+// =================================================
+// EXTRACT NUMBERS
+// =================================================
+
+function extractNumbers(text) {
+
+  const matches =
+    String(text)
+      .match(
+        /[\d]+(?:,[\d]{3})*(?:\.\d{1,2})?/g
+      );
+
+  if (!matches) {
+    return [];
+  }
+
+  return matches
+    .map(
+      value =>
+        Number(
+          value.replace(
+            /,/g,
+            ""
+          )
+        )
+    )
+    .filter(
+      validPrice
+    );
+}
+
+
+// =================================================
 // VALID PRICE
-// ==========================================
+// =================================================
 
 function validPrice(price) {
 
@@ -504,9 +656,9 @@ function validPrice(price) {
 }
 
 
-// ==========================================
+// =================================================
 // CLEAN TEXT
-// ==========================================
+// =================================================
 
 function cleanText(text) {
 
@@ -543,9 +695,9 @@ function cleanText(text) {
 }
 
 
-// ==========================================
+// =================================================
 // DECODE HTML
-// ==========================================
+// =================================================
 
 function decodeHtml(text) {
 
@@ -573,8 +725,9 @@ function decodeHtml(text) {
 }
 
 
-// ==========================================
+// =================================================
 // EXPORT
-// ==========================================
+// =================================================
 
-module.exports = searchITMonster;
+module.exports =
+  searchITMonster;
