@@ -8,8 +8,7 @@ const {
 const searchNeptronics = require("./stores/neptronics");
 const searchBigbyte = require("./stores/bigbyte");
 const searchOliz = require("./stores/oliz");
-const searchHukut =
-  require("./stores/hukut");
+const searchHukut = require("./stores/hukut");
 
 const app = express();
 
@@ -63,7 +62,10 @@ registerStore(
 );
 
 // ==========================================
-// HOME / STATUS
+// HOME / STATUregisterStore(
+  "Hukut",
+  searchHukut
+);S
 // ==========================================
 
 app.get("/", (req, res) => {
