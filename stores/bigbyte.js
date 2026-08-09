@@ -1,3 +1,28 @@
+// ============================================================
+// BIGBYTE IT WORLD SEARCH
+// ============================================================
+
+const BASE_URL = "https://bigbyte.com.np";
+
+const HEADERS = {
+  "User-Agent":
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+
+  "Accept":
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+  "Accept-Language":
+    "en-US,en;q=0.9",
+
+  "Cache-Control":
+    "no-cache"
+};
+
+
+// ============================================================
+// MAIN SEARCH
+// ============================================================
+
 async function searchBigbyte(query) {
   const searchTerm = String(query || "").trim();
 
@@ -5,296 +30,252 @@ async function searchBigbyte(query) {
     return [];
   }
 
-  try {
-    const searchUrl =
-      "https://bigbyte.com.np/shop/?s=" +
-      encodeURIComponent(searchTerm) +
-      "&post_type=product";
+  console.log(
+    `Bigbyte: searching for "${searchTerm}"`
+  );
 
-    const response = await fetch(searchUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-        "Accept":
-          "text/html,application/xhtml+xml"
-      }
-    });
+  try {
+
+    // --------------------------------------------------------
+    // SEARCH URL
+    // --------------------------------------------------------
+
+    const searchUrl =
+      `${BASE_URL}/shop/?s=${encodeURIComponent(searchTerm)}&post_type=product`;
+
+    console.log(
+      `Bigbyte URL: ${searchUrl}`
+    );
+
+    // --------------------------------------------------------
+    // SEARCH REQUEST
+    // --------------------------------------------------------
+
+    const response = await fetchWithTimeout(
+      searchUrl
+    );
+
+    console.log(
+      `Bigbyte search status: ${response.status}`
+    );
+
+    console.log(
+      `Bigbyte final URL: ${response.url}`
+    );
 
     if (!response.ok) {
       console.log(
-        "Bigbyte search status:",
-        response.status
+        `Bigbyte search failed with HTTP ${response.status}`
       );
+
       return [];
     }
 
-    const html = await response.text();
-    console.log("BIGBYTE STATUS:", response.status);
-console.log("BIGBYTE URL:", response.url);
-console.log("BIGBYTE HTML LENGTH:", html.length);
-console.log(
-  "BIGBYTE HTML START:",
-  html.substring(0, 1000)
-);
+    const html =
+      await response.text();
 
-    // ==========================================
-    // FIND PRODUCT LINKS
-    // ==========================================
+    console.log(
+      `Bigbyte: received ${html.length} characters`
+    );
 
-    const matches = [
-      ...html.matchAll(
-        /href\s*=\s*["']([^"']+)["']/gi
-      )
-    ];
+    if (
+      !html ||
+      html.length < 100
+    ) {
+      console.log(
+        "Bigbyte: search response is empty"
+      );
 
-    const productUrls = [];
-    const seen = new Set();
-
-    for (const match of matches) {
-      let url = decodeHtml(match[1]);
-
-      if (!url.startsWith("http")) {
-        if (url.startsWith("/")) {
-          url = "https://bigbyte.com.np" + url;
-        } else {
-          continue;
-        }
-      }
-
-      url = url.split("?")[0];
-
-      // Bigbyte product URLs are usually direct pages,
-      // so only accept links that look like product pages.
-      if (
-        !url.includes("bigbyte.com.np") ||
-        url === "https://bigbyte.com.np/"
-      ) {
-        continue;
-      }
-
-      // Ignore obvious non-product pages
-      if (
-        url.includes("/shop") ||
-        url.includes("/cart") ||
-        url.includes("/checkout") ||
-        url.includes("/my-account") ||
-        url.includes("/category") ||
-        url.includes("/brand") ||
-        url.includes("/blog") ||
-        url.includes("/contact")
-      ) {
-        continue;
-      }
-
-      if (!seen.has(url)) {
-        seen.add(url);
-        productUrls.push(url);
-      }
+      return [];
     }
+
+    // --------------------------------------------------------
+    // FIND PRODUCT LINKS
+    // --------------------------------------------------------
+
+    const productUrls =
+      extractProductUrls(html);
 
     console.log(
       `Bigbyte: found ${productUrls.length} possible product links`
     );
 
+    if (
+      productUrls.length === 0
+    ) {
+      console.log(
+        "Bigbyte: no product links found"
+      );
+
+      return [];
+    }
+
     const results = [];
 
-    // Don't make too many requests
-    const urlsToCheck = productUrls.slice(0, 12);
+    // Don't overload the store
+    const urlsToCheck =
+      productUrls.slice(0, 15);
 
-    // ==========================================
-    // OPEN EACH PRODUCT
-    // ==========================================
+    // --------------------------------------------------------
+    // PRODUCT PAGES
+    // --------------------------------------------------------
 
-    for (const productUrl of urlsToCheck) {
+    for (
+      const productUrl
+      of urlsToCheck
+    ) {
+
       try {
-        const productResponse = await fetch(
-          productUrl,
-          {
-            headers: {
-              "User-Agent":
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
-              "Accept":
-                "text/html,application/xhtml+xml"
-            }
-          }
+
+        console.log(
+          `Bigbyte: checking ${productUrl}`
         );
 
-        if (!productResponse.ok) {
+        const productResponse =
+          await fetchWithTimeout(
+            productUrl
+          );
+
+        console.log(
+          `Bigbyte product status: ${productResponse.status}`
+        );
+
+        if (
+          !productResponse.ok
+        ) {
+          console.log(
+            `Bigbyte: skipped product HTTP ${productResponse.status}`
+          );
+
           continue;
         }
 
         const productHtml =
           await productResponse.text();
 
-        // ==========================================
-        // PRODUCT NAME
-        // ==========================================
-
-        let name = "";
-
-        const h1Match = productHtml.match(
-          /<h1[^>]*>([\s\S]*?)<\/h1>/i
-        );
-
-        if (h1Match) {
-          name = cleanText(h1Match[1]);
-        }
-
-        // Fallback to title
-        if (!name) {
-          const titleMatch =
-            productHtml.match(
-              /<title[^>]*>([\s\S]*?)<\/title>/i
-            );
-
-          if (titleMatch) {
-            name = cleanText(
-              titleMatch[1]
-                .replace(/\s*[-|].*$/, "")
-            );
-          }
-        }
-
-        if (!name) {
+        if (!productHtml) {
           continue;
         }
 
-        // ==========================================
-        // MAKE SURE PRODUCT MATCHES QUERY
-        // ==========================================
+        // ----------------------------------------------------
+        // NAME
+        // ----------------------------------------------------
 
-        const nameLower =
-          name.toLowerCase();
-
-        const searchLower =
-          searchTerm.toLowerCase();
-
-        const searchWords =
-          searchLower
-            .split(/\s+/)
-            .filter(
-              word => word.length > 1
-            );
-
-        const matchesQuery =
-          nameLower.includes(searchLower) ||
-          searchWords.some(
-            word =>
-              nameLower.includes(word)
+        const name =
+          extractProductName(
+            productHtml
           );
 
-        if (!matchesQuery) {
+        if (!name) {
+
+          console.log(
+            `Bigbyte: product name not found: ${productUrl}`
+          );
+
           continue;
         }
 
-        // ==========================================
-        // FIND PRICE
-        // ==========================================
+        console.log(
+          `Bigbyte product name: ${name}`
+        );
+
+        // ----------------------------------------------------
+        // SEARCH MATCH
+        // ----------------------------------------------------
+
+        if (
+          !matchesSearch(
+            searchTerm,
+            name
+          )
+        ) {
+
+          console.log(
+            `Bigbyte: "${name}" did not match "${searchTerm}"`
+          );
+
+          continue;
+        }
+
+        // ----------------------------------------------------
+        // PRICE
+        // ----------------------------------------------------
 
         const price =
           extractBigbytePrice(
             productHtml
           );
 
-        if (!price) {
+        console.log(
+          `Bigbyte price: ${price}`
+        );
+
+        if (
+          !validBigbytePrice(price)
+        ) {
+
           console.log(
-            `Bigbyte: no price found for ${name}`
+            `Bigbyte: no valid price found for "${name}"`
           );
+
           continue;
         }
 
-        // ==========================================
-        // FIND IMAGE
-        // ==========================================
+        // ----------------------------------------------------
+        // IMAGE
+        // ----------------------------------------------------
 
-        let image = "";
+        const image =
+          extractProductImage(
+            productHtml
+          );
 
-        const imagePatterns = [
-          /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
-          /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
-          /<img[^>]*class=["'][^"']*wp-post-image[^"']*["'][^>]*src=["']([^"']+)["']/i,
-          /<img[^>]*src=["']([^"']+)["'][^>]*class=["'][^"']*wp-post-image[^"']*["']/i
-        ];
-
-        for (
-          const pattern of imagePatterns
-        ) {
-          const imageMatch =
-            productHtml.match(pattern);
-
-          if (imageMatch) {
-            image =
-              decodeHtml(
-                imageMatch[1]
-              );
-
-            break;
-          }
-        }
-
-        if (
-          image &&
-          !image.startsWith("http")
-        ) {
-          if (image.startsWith("//")) {
-            image =
-              "https:" + image;
-          } else if (
-            image.startsWith("/")
-          ) {
-            image =
-              "https://bigbyte.com.np" +
-              image;
-          }
-        }
-
-        // ==========================================
+        // ----------------------------------------------------
         // AVAILABILITY
-        // ==========================================
+        // ----------------------------------------------------
 
-        let availability =
-          "Check store";
+        const availability =
+          extractAvailability(
+            productHtml
+          );
 
-        const lowerHtml =
-          productHtml.toLowerCase();
-
-        if (
-          lowerHtml.includes(
-            "out of stock"
-          )
-        ) {
-          availability =
-            "Out of stock";
-        } else if (
-          lowerHtml.includes(
-            "in stock"
-          )
-        ) {
-          availability =
-            "Available";
-        }
-
-        // ==========================================
-        // ADD RESULT
-        // ==========================================
+        // ----------------------------------------------------
+        // RESULT
+        // ----------------------------------------------------
 
         results.push({
-          name: name,
-          store: "Bigbyte IT World",
-          price: price,
+          name,
+
+          store:
+            "Bigbyte IT World",
+
+          price,
+
           shipping: 0,
+
           total: price,
-          availability: availability,
+
+          availability,
+
           url: productUrl,
-          source: "Bigbyte IT World",
-          image: image,
+
+          image,
+
+          source:
+            "Bigbyte IT World",
+
           lastUpdated:
             new Date().toISOString()
         });
 
-      } catch (error) {
         console.log(
-          "Bigbyte product error:",
+          `Bigbyte: FOUND "${name}" - Rs. ${price}`
+        );
+
+      } catch (error) {
+
+        console.error(
+          `Bigbyte product error for ${productUrl}:`,
           error.message
         );
       }
@@ -307,24 +288,410 @@ console.log(
     return results;
 
   } catch (error) {
+
     console.error(
-      "Bigbyte search error:",
+      "=========================================="
+    );
+
+    console.error(
+      "BIGBYTE SEARCH ERROR"
+    );
+
+    console.error(
+      "Message:",
       error.message
+    );
+
+    console.error(
+      "Name:",
+      error.name
+    );
+
+    console.error(
+      "Code:",
+      error.code
+    );
+
+    console.error(
+      "Cause:",
+      error.cause
+    );
+
+    console.error(
+      "=========================================="
     );
 
     return [];
   }
 }
 
-// ==========================================
-// EXTRACT PRODUCT PRICE
-// ==========================================
+
+// ============================================================
+// FETCH WITH TIMEOUT
+// ============================================================
+
+async function fetchWithTimeout(url) {
+
+  return await fetch(
+    url,
+    {
+      method: "GET",
+
+      headers: HEADERS,
+
+      redirect: "follow",
+
+      signal:
+        AbortSignal.timeout(
+          20000
+        )
+    }
+  );
+}
+
+
+// ============================================================
+// PRODUCT URL EXTRACTION
+// ============================================================
+
+function extractProductUrls(html) {
+
+  const urls = [];
+  const seen = new Set();
+
+  const matches = [
+    ...html.matchAll(
+      /href\s*=\s*["']([^"']+)["']/gi
+    )
+  ];
+
+  for (
+    const match
+    of matches
+  ) {
+
+    let url =
+      decodeHtml(
+        match[1]
+      );
+
+    if (!url) {
+      continue;
+    }
+
+    try {
+
+      url =
+        new URL(
+          url,
+          BASE_URL
+        ).href;
+
+    } catch {
+      continue;
+    }
+
+    url =
+      url.split("?")[0];
+
+    url =
+      url.split("#")[0];
+
+    // Only Bigbyte
+    if (
+      !url.startsWith(BASE_URL)
+    ) {
+      continue;
+    }
+
+    // Ignore obvious non-product pages
+    const blockedPaths = [
+      "/shop",
+      "/cart",
+      "/checkout",
+      "/my-account",
+      "/category",
+      "/product-category",
+      "/brand",
+      "/blog",
+      "/contact",
+      "/about",
+      "/privacy",
+      "/terms"
+    ];
+
+    const isBlocked =
+      blockedPaths.some(
+        path =>
+          url.includes(path)
+      );
+
+    if (isBlocked) {
+      continue;
+    }
+
+    // Ignore files
+    if (
+      /\.(jpg|jpeg|png|gif|webp|svg|pdf)$/i.test(
+        url
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      !seen.has(url)
+    ) {
+
+      seen.add(url);
+
+      urls.push(url);
+    }
+  }
+
+  return urls;
+}
+
+
+// ============================================================
+// PRODUCT NAME
+// ============================================================
+
+function extractProductName(html) {
+
+  // WooCommerce product title
+  const productTitle =
+    html.match(
+      /<h1[^>]*class=["'][^"']*(?:product_title|entry-title)[^"']*["'][^>]*>([\s\S]*?)<\/h1>/i
+    );
+
+  if (
+    productTitle
+  ) {
+
+    const name =
+      cleanText(
+        productTitle[1]
+      );
+
+    if (name) {
+      return name;
+    }
+  }
+
+  // Any H1
+  const h1 =
+    html.match(
+      /<h1[^>]*>([\s\S]*?)<\/h1>/i
+    );
+
+  if (h1) {
+
+    const name =
+      cleanText(
+        h1[1]
+      );
+
+    if (name) {
+      return name;
+    }
+  }
+
+  // Open Graph title
+  const ogTitle =
+    html.match(
+      /<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i
+    );
+
+  if (
+    ogTitle
+  ) {
+
+    const name =
+      cleanText(
+        decodeHtml(
+          ogTitle[1]
+        )
+      );
+
+    if (name) {
+      return name;
+    }
+  }
+
+  // Reverse Open Graph order
+  const ogTitleReverse =
+    html.match(
+      /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i
+    );
+
+  if (
+    ogTitleReverse
+  ) {
+
+    const name =
+      cleanText(
+        decodeHtml(
+          ogTitleReverse[1]
+        )
+      );
+
+    if (name) {
+      return name;
+    }
+  }
+
+  // Title
+  const title =
+    html.match(
+      /<title[^>]*>([\s\S]*?)<\/title>/i
+    );
+
+  if (
+    title
+  ) {
+
+    let name =
+      cleanText(
+        title[1]
+      );
+
+    name =
+      name.replace(
+        /\s*[-|–—]\s*Bigbyte.*$/i,
+        ""
+      );
+
+    if (name) {
+      return name;
+    }
+  }
+
+  return "";
+}
+
+
+// ============================================================
+// SEARCH MATCH
+// ============================================================
+
+function matchesSearch(
+  searchTerm,
+  productName
+) {
+
+  const search =
+    normalizeSearch(
+      searchTerm
+    );
+
+  const name =
+    normalizeSearch(
+      productName
+    );
+
+  if (
+    !search ||
+    !name
+  ) {
+    return false;
+  }
+
+  // Exact phrase
+  if (
+    name.includes(search)
+  ) {
+    return true;
+  }
+
+  const words =
+    search
+      .split(/\s+/)
+      .filter(
+        word =>
+          word.length >= 2
+      );
+
+  if (
+    !words.length
+  ) {
+    return false;
+  }
+
+  let matches = 0;
+
+  for (
+    const word
+    of words
+  ) {
+
+    if (
+      name.includes(word)
+    ) {
+      matches++;
+      continue;
+    }
+
+    // Simple singular/plural support
+    if (
+      word.endsWith("s") &&
+      word.length > 3 &&
+      name.includes(
+        word.slice(0, -1)
+      )
+    ) {
+      matches++;
+      continue;
+    }
+
+    if (
+      !word.endsWith("s") &&
+      name.includes(
+        word + "s"
+      )
+    ) {
+      matches++;
+    }
+  }
+
+  return (
+    matches >=
+    Math.ceil(
+      words.length / 2
+    )
+  );
+}
+
+
+// ============================================================
+// NORMALIZE SEARCH
+// ============================================================
+
+function normalizeSearch(text) {
+
+  return String(text || "")
+    .toLowerCase()
+    .replace(
+      /[^a-z0-9]+/g,
+      " "
+    )
+    .replace(
+      /\s+/g,
+      " "
+    )
+    .trim();
+}
+
+
+// ============================================================
+// PRICE EXTRACTION
+// ============================================================
 
 function extractBigbytePrice(html) {
 
-  // ------------------------------------------
-  // METHOD 1: JSON-LD
-  // ------------------------------------------
+  // ----------------------------------------------------------
+  // JSON-LD
+  // ----------------------------------------------------------
 
   const jsonLdMatches = [
     ...html.matchAll(
@@ -333,9 +700,12 @@ function extractBigbytePrice(html) {
   ];
 
   for (
-    const match of jsonLdMatches
+    const match
+    of jsonLdMatches
   ) {
+
     try {
+
       const data =
         JSON.parse(
           match[1].trim()
@@ -347,49 +717,59 @@ function extractBigbytePrice(html) {
           : [data];
 
       for (
-        const obj of objects
+        const obj
+        of objects
       ) {
+
         if (
-          obj &&
+          !obj
+        ) {
+          continue;
+        }
+
+        if (
           obj.offers &&
+          !Array.isArray(
+            obj.offers
+          ) &&
           obj.offers.price
         ) {
+
           const price =
-            Number(
-              String(
-                obj.offers.price
-              ).replace(/,/g, "")
+            parsePrice(
+              obj.offers.price
             );
 
-          if (validBigbytePrice(price)) {
+          if (
+            validBigbytePrice(price)
+          ) {
             return price;
           }
         }
 
         if (
-          obj &&
           Array.isArray(
             obj.offers
           )
         ) {
+
           for (
-            const offer of obj.offers
+            const offer
+            of obj.offers
           ) {
+
             if (
               offer &&
               offer.price
             ) {
+
               const price =
-                Number(
-                  String(
-                    offer.price
-                  ).replace(/,/g, "")
+                parsePrice(
+                  offer.price
                 );
 
               if (
-                validBigbytePrice(
-                  price
-                )
+                validBigbytePrice(price)
               ) {
                 return price;
               }
@@ -398,25 +778,65 @@ function extractBigbytePrice(html) {
         }
       }
 
-    } catch (error) {
-      // Ignore invalid JSON-LD
+    } catch {
+      // Invalid JSON-LD; continue
     }
   }
 
-  // ------------------------------------------
-  // METHOD 2: itemprop price
-  // ------------------------------------------
+  // ----------------------------------------------------------
+  // itemprop
+  // ----------------------------------------------------------
 
-  const itemPropMatch =
+  const itemPropPatterns = [
+
+    /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i,
+
+    /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i,
+
+    /itemprop=["']price["'][^>]*value=["']([\d,.]+)["']/i
+  ];
+
+  for (
+    const pattern
+    of itemPropPatterns
+  ) {
+
+    const match =
+      html.match(pattern);
+
+    if (
+      match
+    ) {
+
+      const price =
+        parsePrice(
+          match[1]
+        );
+
+      if (
+        validBigbytePrice(price)
+      ) {
+        return price;
+      }
+    }
+  }
+
+  // ----------------------------------------------------------
+  // data-price
+  // ----------------------------------------------------------
+
+  const dataPrice =
     html.match(
-      /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i
+      /data-price=["']([\d,.]+)["']/i
     );
 
-  if (itemPropMatch) {
+  if (
+    dataPrice
+  ) {
+
     const price =
-      Number(
-        itemPropMatch[1]
-          .replace(/,/g, "")
+      parsePrice(
+        dataPrice[1]
       );
 
     if (
@@ -426,22 +846,31 @@ function extractBigbytePrice(html) {
     }
   }
 
-  // ------------------------------------------
-  // METHOD 3: WooCommerce price
-  // ------------------------------------------
+  // ----------------------------------------------------------
+  // WooCommerce price
+  // ----------------------------------------------------------
 
-  const priceBlock =
-    html.match(
-      /class=["'][^"']*(?:price|woocommerce-Price-amount)[^"']*["'][^>]*>([\s\S]{0,500})<\/(?:span|p|div)>/i
-    );
+  const priceBlocks = [
+    ...html.matchAll(
+      /class=["'][^"']*(?:woocommerce-Price-amount|price|amount)[^"']*["'][^>]*>([\s\S]{0,1000})<\/(?:span|bdi|p|div|ins|del)>/gi
+    )
+  ];
 
-  if (priceBlock) {
+  for (
+    const block
+    of priceBlocks
+  ) {
+
     const prices =
       extractBigbyteNumbers(
-        priceBlock[1]
+        block[1]
       );
 
-    if (prices.length) {
+    if (
+      prices.length
+    ) {
+
+      // Usually the last number is the current price
       const price =
         prices[
           prices.length - 1
@@ -455,23 +884,24 @@ function extractBigbytePrice(html) {
     }
   }
 
-  // ------------------------------------------
-  // METHOD 4: Rupee symbol
-  // ------------------------------------------
+  // ----------------------------------------------------------
+  // Rs / NPR / rupee
+  // ----------------------------------------------------------
 
   const rupeeMatches = [
     ...html.matchAll(
-      /(?:₨|Rs\.?|रु\.?)\s*([\d,]+(?:\.\d{1,2})?)/gi
+      /(?:₨|Rs\.?|NPR|रु\.?)\s*([\d,]+(?:\.\d{1,2})?)/gi
     )
   ];
 
   for (
-    const match of rupeeMatches
+    const match
+    of rupeeMatches
   ) {
+
     const price =
-      Number(
+      parsePrice(
         match[1]
-          .replace(/,/g, "")
       );
 
     if (
@@ -484,13 +914,98 @@ function extractBigbytePrice(html) {
   return null;
 }
 
-// ==========================================
-// EXTRACT NUMBERS
-// ==========================================
+
+// ============================================================
+// IMAGE
+// ============================================================
+
+function extractProductImage(html) {
+
+  const patterns = [
+
+    /<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+
+    /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
+
+    /<meta[^>]*property=["']og:image:url["'][^>]*content=["']([^"']+)["']/i,
+
+    /<img[^>]*class=["'][^"']*(?:wp-post-image|woocommerce-product-gallery__image)[^"']*["'][^>]*src=["']([^"']+)["']/i,
+
+    /<img[^>]*src=["']([^"']+)["'][^>]*class=["'][^"']*(?:wp-post-image|woocommerce-product-gallery__image)[^"']*["']/i,
+
+    /<img[^>]*data-src=["']([^"']+)["'][^>]*>/i
+  ];
+
+  for (
+    const pattern
+    of patterns
+  ) {
+
+    const match =
+      html.match(pattern);
+
+    if (
+      match &&
+      match[1]
+    ) {
+
+      return normalizeUrl(
+        decodeHtml(
+          match[1]
+        )
+      );
+    }
+  }
+
+  return "";
+}
+
+
+// ============================================================
+// AVAILABILITY
+// ============================================================
+
+function extractAvailability(
+  html
+) {
+
+  const lower =
+    html.toLowerCase();
+
+  if (
+    lower.includes(
+      "out of stock"
+    ) ||
+    lower.includes(
+      "out-of-stock"
+    )
+  ) {
+    return "Out of stock";
+  }
+
+  if (
+    lower.includes(
+      "in stock"
+    ) ||
+    lower.includes(
+      "instock"
+    )
+  ) {
+    return "Available";
+  }
+
+  return "Check store";
+}
+
+
+// ============================================================
+// NUMBER EXTRACTION
+// ============================================================
 
 function extractBigbyteNumbers(
   html
 ) {
+
   const text =
     cleanText(html);
 
@@ -499,29 +1014,52 @@ function extractBigbyteNumbers(
       /[\d]+(?:,[\d]{3})*(?:\.\d{1,2})?/g
     );
 
-  if (!matches) {
+  if (
+    !matches
+  ) {
     return [];
   }
 
   return matches
     .map(
-      value =>
-        Number(
-          value.replace(/,/g, "")
-        )
+      parsePrice
     )
     .filter(
       validBigbytePrice
     );
 }
 
-// ==========================================
+
+// ============================================================
+// PARSE PRICE
+// ============================================================
+
+function parsePrice(
+  value
+) {
+
+  const number =
+    Number(
+      String(value)
+        .replace(
+          /,/g,
+          ""
+        )
+        .trim()
+    );
+
+  return number;
+}
+
+
+// ============================================================
 // VALID PRICE
-// ==========================================
+// ============================================================
 
 function validBigbytePrice(
   price
 ) {
+
   return (
     Number.isFinite(price) &&
     price > 10 &&
@@ -529,12 +1067,52 @@ function validBigbytePrice(
   );
 }
 
-// ==========================================
-// CLEAN HTML
-// ==========================================
 
-function cleanText(text) {
-  return String(text)
+// ============================================================
+// NORMALIZE URL
+// ============================================================
+
+function normalizeUrl(
+  url
+) {
+
+  if (!url) {
+    return "";
+  }
+
+  if (
+    url.startsWith("//")
+  ) {
+    return "https:" + url;
+  }
+
+  if (
+    url.startsWith("/")
+  ) {
+    return BASE_URL + url;
+  }
+
+  return url;
+}
+
+
+// ============================================================
+// CLEAN HTML
+// ============================================================
+
+function cleanText(
+  text
+) {
+
+  return String(text || "")
+    .replace(
+      /<script[\s\S]*?<\/script>/gi,
+      " "
+    )
+    .replace(
+      /<style[\s\S]*?<\/style>/gi,
+      " "
+    )
     .replace(
       /<[^>]*>/g,
       " "
@@ -568,43 +1146,60 @@ function cleanText(text) {
       "-"
     )
     .replace(
+      /&#39;/gi,
+      "'"
+    )
+    .replace(
       /\s+/g,
       " "
     )
     .trim();
 }
 
-// ==========================================
-// DECODE HTML
-// ==========================================
 
-function decodeHtml(text) {
-  return String(text)
+// ============================================================
+// DECODE HTML
+// ============================================================
+
+function decodeHtml(
+  text
+) {
+
+  return String(text || "")
     .replace(
-      /&amp;/g,
+      /&amp;/gi,
       "&"
     )
     .replace(
-      /&quot;/g,
+      /&quot;/gi,
       '"'
     )
     .replace(
-      /&#39;/g,
+      /&#39;/gi,
       "'"
     )
     .replace(
-      /&lt;/g,
+      /&lt;/gi,
       "<"
     )
     .replace(
-      /&gt;/g,
+      /&gt;/gi,
       ">"
+    )
+    .replace(
+      /&#8377;/gi,
+      "₨"
+    )
+    .replace(
+      /&#x20B9;/gi,
+      "₨"
     );
 }
 
-// ==========================================
+
+// ============================================================
 // EXPORT
-// ==========================================
+// ============================================================
 
 module.exports =
   searchBigbyte;
