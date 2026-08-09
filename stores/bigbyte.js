@@ -1,5 +1,6 @@
+```javascript
 // ============================================================
-// BIGBYTE IT WORLD SEARCH
+// BIGBYTE IT WORLD SCRAPER
 // ============================================================
 
 const BASE_URL = "https://bigbyte.com.np";
@@ -11,11 +12,9 @@ const HEADERS = {
   "Accept":
     "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
 
-  "Accept-Language":
-    "en-US,en;q=0.9",
+  "Accept-Language": "en-US,en;q=0.9",
 
-  "Cache-Control":
-    "no-cache"
+  "Cache-Control": "no-cache"
 };
 
 
@@ -24,6 +23,7 @@ const HEADERS = {
 // ============================================================
 
 async function searchBigbyte(query) {
+
   const searchTerm = String(query || "").trim();
 
   if (!searchTerm) {
@@ -44,16 +44,15 @@ async function searchBigbyte(query) {
       `${BASE_URL}/shop/?s=${encodeURIComponent(searchTerm)}&post_type=product`;
 
     console.log(
-      `Bigbyte URL: ${searchUrl}`
+      `BIGBYTE URL: ${searchUrl}`
     );
 
     // --------------------------------------------------------
-    // SEARCH REQUEST
+    // SEARCH PAGE
     // --------------------------------------------------------
 
-    const response = await fetchWithTimeout(
-      searchUrl
-    );
+    const response =
+      await fetchWithTimeout(searchUrl);
 
     console.log(
       `Bigbyte search status: ${response.status}`
@@ -64,8 +63,9 @@ async function searchBigbyte(query) {
     );
 
     if (!response.ok) {
+
       console.log(
-        `Bigbyte search failed with HTTP ${response.status}`
+        `Bigbyte search failed: HTTP ${response.status}`
       );
 
       return [];
@@ -82,29 +82,31 @@ async function searchBigbyte(query) {
       !html ||
       html.length < 100
     ) {
+
       console.log(
-        "Bigbyte: search response is empty"
+        "Bigbyte: empty search response"
       );
 
       return [];
     }
 
     // --------------------------------------------------------
-    // FIND PRODUCT LINKS
+    // PRODUCT URLS
     // --------------------------------------------------------
 
     const productUrls =
       extractProductUrls(html);
 
     console.log(
-      `Bigbyte: found ${productUrls.length} possible product links`
+      `Bigbyte: found ${productUrls.length} product links`
     );
 
     if (
       productUrls.length === 0
     ) {
+
       console.log(
-        "Bigbyte: no product links found"
+        "Bigbyte: no product URLs found"
       );
 
       return [];
@@ -112,7 +114,7 @@ async function searchBigbyte(query) {
 
     const results = [];
 
-    // Don't overload the store
+    // Prevent excessive requests
     const urlsToCheck =
       productUrls.slice(0, 15);
 
@@ -121,8 +123,7 @@ async function searchBigbyte(query) {
     // --------------------------------------------------------
 
     for (
-      const productUrl
-      of urlsToCheck
+      const productUrl of urlsToCheck
     ) {
 
       try {
@@ -132,9 +133,7 @@ async function searchBigbyte(query) {
         );
 
         const productResponse =
-          await fetchWithTimeout(
-            productUrl
-          );
+          await fetchWithTimeout(productUrl);
 
         console.log(
           `Bigbyte product status: ${productResponse.status}`
@@ -143,8 +142,9 @@ async function searchBigbyte(query) {
         if (
           !productResponse.ok
         ) {
+
           console.log(
-            `Bigbyte: skipped product HTTP ${productResponse.status}`
+            `Bigbyte: skipping HTTP ${productResponse.status}`
           );
 
           continue;
@@ -162,14 +162,12 @@ async function searchBigbyte(query) {
         // ----------------------------------------------------
 
         const name =
-          extractProductName(
-            productHtml
-          );
+          extractProductName(productHtml);
 
         if (!name) {
 
           console.log(
-            `Bigbyte: product name not found: ${productUrl}`
+            "Bigbyte: product name not found"
           );
 
           continue;
@@ -202,20 +200,18 @@ async function searchBigbyte(query) {
         // ----------------------------------------------------
 
         const price =
-          extractBigbytePrice(
-            productHtml
-          );
+          extractBigbytePrice(productHtml);
 
         console.log(
           `Bigbyte price: ${price}`
         );
 
         if (
-          !validBigbytePrice(price)
+          !validPrice(price)
         ) {
 
           console.log(
-            `Bigbyte: no valid price found for "${name}"`
+            `Bigbyte: no valid price for "${name}"`
           );
 
           continue;
@@ -226,47 +222,43 @@ async function searchBigbyte(query) {
         // ----------------------------------------------------
 
         const image =
-          extractProductImage(
-            productHtml
-          );
+          extractProductImage(productHtml);
 
         // ----------------------------------------------------
         // AVAILABILITY
         // ----------------------------------------------------
 
         const availability =
-          extractAvailability(
-            productHtml
-          );
+          extractAvailability(productHtml);
 
         // ----------------------------------------------------
         // RESULT
         // ----------------------------------------------------
 
-        results.push({
-          name,
+        const result = {
+          name: name,
 
-          store:
-            "Bigbyte IT World",
+          store: "Bigbyte IT World",
 
-          price,
+          price: price,
 
           shipping: 0,
 
           total: price,
 
-          availability,
+          availability: availability,
 
           url: productUrl,
 
-          image,
+          image: image,
 
-          source:
-            "Bigbyte IT World",
+          source: "Bigbyte IT World",
 
           lastUpdated:
             new Date().toISOString()
-        });
+        };
+
+        results.push(result);
 
         console.log(
           `Bigbyte: FOUND "${name}" - Rs. ${price}`
@@ -308,11 +300,6 @@ async function searchBigbyte(query) {
     );
 
     console.error(
-      "Code:",
-      error.code
-    );
-
-    console.error(
       "Cause:",
       error.cause
     );
@@ -342,22 +329,22 @@ async function fetchWithTimeout(url) {
       redirect: "follow",
 
       signal:
-        AbortSignal.timeout(
-          20000
-        )
+        AbortSignal.timeout(20000)
     }
   );
 }
 
 
 // ============================================================
-// PRODUCT URL EXTRACTION
+// EXTRACT PRODUCT URLS
 // ============================================================
 
 function extractProductUrls(html) {
 
   const urls = [];
-  const seen = new Set();
+
+  const seen =
+    new Set();
 
   const matches = [
     ...html.matchAll(
@@ -366,14 +353,11 @@ function extractProductUrls(html) {
   ];
 
   for (
-    const match
-    of matches
+    const match of matches
   ) {
 
     let url =
-      decodeHtml(
-        match[1]
-      );
+      decodeHtml(match[1]);
 
     if (!url) {
       continue;
@@ -388,52 +372,157 @@ function extractProductUrls(html) {
         ).href;
 
     } catch {
+
       continue;
     }
 
     url =
-      url.split("?")[0];
+      url
+        .split("?")[0]
+        .split("#")[0];
 
-    url =
-      url.split("#")[0];
+    // --------------------------------------------------------
+    // ONLY BIGBYTE
+    // --------------------------------------------------------
 
-    // Only Bigbyte
     if (
       !url.startsWith(BASE_URL)
     ) {
       continue;
     }
 
-    // Ignore obvious non-product pages
-    const blockedPaths = [
-      "/shop",
-      "/cart",
-      "/checkout",
-      "/my-account",
-      "/category",
-      "/product-category",
-      "/brand",
-      "/blog",
-      "/contact",
-      "/about",
-      "/privacy",
-      "/terms"
-    ];
+    let pathname;
 
-    const isBlocked =
-      blockedPaths.some(
-        path =>
-          url.includes(path)
-      );
+    try {
 
-    if (isBlocked) {
+      pathname =
+        new URL(url)
+          .pathname
+          .toLowerCase();
+
+    } catch {
+
       continue;
     }
 
-    // Ignore files
+    // --------------------------------------------------------
+    // NEVER FETCH ASSETS
+    // --------------------------------------------------------
+
     if (
-      /\.(jpg|jpeg|png|gif|webp|svg|pdf)$/i.test(
-        url
+      pathname.includes(
+        "/wp-content/"
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      pathname.includes(
+        "/wp-includes/"
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      pathname.includes(
+        "/uploads/"
+      )
+    ) {
+      continue;
+    }
+
+    if (
+      pathname.includes(
+        "/elementor/"
+      )
+    ) {
+      continue;
+    }
+
+    // --------------------------------------------------------
+    // FILE EXTENSIONS
+    // --------------------------------------------------------
+
+    if (
+      /\.(css|js|json|xml|jpg|jpeg|png|gif|webp|svg|ico|pdf|woff|woff2|ttf|eot|mp4|mp3|zip)$/i.test(
+        pathname
+      )
+    ) {
+      continue;
+    }
+
+    // --------------------------------------------------------
+    // BLOCK NON-PRODUCT PAGES
+    // --------------------------------------------------------
+
+    const blockedPaths = [
+
+      "/",
+
+      "/shop",
+
+      "/cart",
+
+      "/checkout",
+
+      "/my-account",
+
+      "/account",
+
+      "/wishlist",
+
+      "/category",
+
+      "/product-category",
+
+      "/tag",
+
+      "/brand",
+
+      "/brands",
+
+      "/blog",
+
+      "/contact",
+
+      "/about",
+
+      "/privacy",
+
+      "/terms",
+
+      "/returns",
+
+      "/track-order",
+
+      "/compare",
+
+      "/search"
+    ];
+
+    const blocked =
+      blockedPaths.some(
+        path =>
+          pathname === path ||
+          pathname.startsWith(
+            path + "/"
+          )
+      );
+
+    if (blocked) {
+      continue;
+    }
+
+    // --------------------------------------------------------
+    // IMPORTANT:
+    // ONLY ACCEPT REAL PRODUCT PATHS
+    // --------------------------------------------------------
+
+    if (
+      !pathname.includes(
+        "/product/"
       )
     ) {
       continue;
@@ -479,7 +568,7 @@ function extractProductName(html) {
     }
   }
 
-  // Any H1
+  // Normal H1
   const h1 =
     html.match(
       /<h1[^>]*>([\s\S]*?)<\/h1>/i
@@ -519,20 +608,20 @@ function extractProductName(html) {
     }
   }
 
-  // Reverse Open Graph order
-  const ogTitleReverse =
+  // Reverse Open Graph format
+  const ogReverse =
     html.match(
       /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i
     );
 
   if (
-    ogTitleReverse
+    ogReverse
   ) {
 
     const name =
       cleanText(
         decodeHtml(
-          ogTitleReverse[1]
+          ogReverse[1]
         )
       );
 
@@ -541,7 +630,7 @@ function extractProductName(html) {
     }
   }
 
-  // Title
+  // HTML title
   const title =
     html.match(
       /<title[^>]*>([\s\S]*?)<\/title>/i
@@ -613,7 +702,7 @@ function matchesSearch(
       );
 
   if (
-    !words.length
+    words.length === 0
   ) {
     return false;
   }
@@ -621,18 +710,19 @@ function matchesSearch(
   let matches = 0;
 
   for (
-    const word
-    of words
+    const word of words
   ) {
 
     if (
       name.includes(word)
     ) {
+
       matches++;
+
       continue;
     }
 
-    // Simple singular/plural support
+    // Singular/plural
     if (
       word.endsWith("s") &&
       word.length > 3 &&
@@ -640,7 +730,9 @@ function matchesSearch(
         word.slice(0, -1)
       )
     ) {
+
       matches++;
+
       continue;
     }
 
@@ -650,6 +742,7 @@ function matchesSearch(
         word + "s"
       )
     ) {
+
       matches++;
     }
   }
@@ -667,7 +760,9 @@ function matchesSearch(
 // NORMALIZE SEARCH
 // ============================================================
 
-function normalizeSearch(text) {
+function normalizeSearch(
+  text
+) {
 
   return String(text || "")
     .toLowerCase()
@@ -687,7 +782,9 @@ function normalizeSearch(text) {
 // PRICE EXTRACTION
 // ============================================================
 
-function extractBigbytePrice(html) {
+function extractBigbytePrice(
+  html
+) {
 
   // ----------------------------------------------------------
   // JSON-LD
@@ -700,8 +797,7 @@ function extractBigbytePrice(html) {
   ];
 
   for (
-    const match
-    of jsonLdMatches
+    const match of jsonLdMatches
   ) {
 
     try {
@@ -717,13 +813,10 @@ function extractBigbytePrice(html) {
           : [data];
 
       for (
-        const obj
-        of objects
+        const obj of objects
       ) {
 
-        if (
-          !obj
-        ) {
+        if (!obj) {
           continue;
         }
 
@@ -741,8 +834,9 @@ function extractBigbytePrice(html) {
             );
 
           if (
-            validBigbytePrice(price)
+            validPrice(price)
           ) {
+
             return price;
           }
         }
@@ -754,8 +848,7 @@ function extractBigbytePrice(html) {
         ) {
 
           for (
-            const offer
-            of obj.offers
+            const offer of obj.offers
           ) {
 
             if (
@@ -769,8 +862,9 @@ function extractBigbytePrice(html) {
                 );
 
               if (
-                validBigbytePrice(price)
+                validPrice(price)
               ) {
+
                 return price;
               }
             }
@@ -779,12 +873,12 @@ function extractBigbytePrice(html) {
       }
 
     } catch {
-      // Invalid JSON-LD; continue
+      // Continue
     }
   }
 
   // ----------------------------------------------------------
-  // itemprop
+  // ITEMPROP PRICE
   // ----------------------------------------------------------
 
   const itemPropPatterns = [
@@ -797,8 +891,7 @@ function extractBigbytePrice(html) {
   ];
 
   for (
-    const pattern
-    of itemPropPatterns
+    const pattern of itemPropPatterns
   ) {
 
     const match =
@@ -814,15 +907,16 @@ function extractBigbytePrice(html) {
         );
 
       if (
-        validBigbytePrice(price)
+        validPrice(price)
       ) {
+
         return price;
       }
     }
   }
 
   // ----------------------------------------------------------
-  // data-price
+  // DATA PRICE
   // ----------------------------------------------------------
 
   const dataPrice =
@@ -840,14 +934,15 @@ function extractBigbytePrice(html) {
       );
 
     if (
-      validBigbytePrice(price)
+      validPrice(price)
     ) {
+
       return price;
     }
   }
 
   // ----------------------------------------------------------
-  // WooCommerce price
+  // WOOCOMMERCE PRICE
   // ----------------------------------------------------------
 
   const priceBlocks = [
@@ -857,35 +952,34 @@ function extractBigbytePrice(html) {
   ];
 
   for (
-    const block
-    of priceBlocks
+    const block of priceBlocks
   ) {
 
-    const prices =
-      extractBigbyteNumbers(
+    const numbers =
+      extractNumbers(
         block[1]
       );
 
     if (
-      prices.length
+      numbers.length
     ) {
 
-      // Usually the last number is the current price
       const price =
-        prices[
-          prices.length - 1
+        numbers[
+          numbers.length - 1
         ];
 
       if (
-        validBigbytePrice(price)
+        validPrice(price)
       ) {
+
         return price;
       }
     }
   }
 
   // ----------------------------------------------------------
-  // Rs / NPR / rupee
+  // RUPEE
   // ----------------------------------------------------------
 
   const rupeeMatches = [
@@ -895,8 +989,7 @@ function extractBigbytePrice(html) {
   ];
 
   for (
-    const match
-    of rupeeMatches
+    const match of rupeeMatches
   ) {
 
     const price =
@@ -905,8 +998,9 @@ function extractBigbytePrice(html) {
       );
 
     if (
-      validBigbytePrice(price)
+      validPrice(price)
     ) {
+
       return price;
     }
   }
@@ -919,7 +1013,9 @@ function extractBigbytePrice(html) {
 // IMAGE
 // ============================================================
 
-function extractProductImage(html) {
+function extractProductImage(
+  html
+) {
 
   const patterns = [
 
@@ -937,8 +1033,7 @@ function extractProductImage(html) {
   ];
 
   for (
-    const pattern
-    of patterns
+    const pattern of patterns
   ) {
 
     const match =
@@ -980,6 +1075,7 @@ function extractAvailability(
       "out-of-stock"
     )
   ) {
+
     return "Out of stock";
   }
 
@@ -991,6 +1087,7 @@ function extractAvailability(
       "instock"
     )
   ) {
+
     return "Available";
   }
 
@@ -1002,7 +1099,7 @@ function extractAvailability(
 // NUMBER EXTRACTION
 // ============================================================
 
-function extractBigbyteNumbers(
+function extractNumbers(
   html
 ) {
 
@@ -1014,9 +1111,7 @@ function extractBigbyteNumbers(
       /[\d]+(?:,[\d]{3})*(?:\.\d{1,2})?/g
     );
 
-  if (
-    !matches
-  ) {
+  if (!matches) {
     return [];
   }
 
@@ -1025,7 +1120,7 @@ function extractBigbyteNumbers(
       parsePrice
     )
     .filter(
-      validBigbytePrice
+      validPrice
     );
 }
 
@@ -1056,7 +1151,7 @@ function parsePrice(
 // VALID PRICE
 // ============================================================
 
-function validBigbytePrice(
+function validPrice(
   price
 ) {
 
@@ -1083,12 +1178,14 @@ function normalizeUrl(
   if (
     url.startsWith("//")
   ) {
+
     return "https:" + url;
   }
 
   if (
     url.startsWith("/")
   ) {
+
     return BASE_URL + url;
   }
 
@@ -1097,7 +1194,7 @@ function normalizeUrl(
 
 
 // ============================================================
-// CLEAN HTML
+// CLEAN TEXT
 // ============================================================
 
 function cleanText(
@@ -1203,3 +1300,4 @@ function decodeHtml(
 
 module.exports =
   searchBigbyte;
+```
