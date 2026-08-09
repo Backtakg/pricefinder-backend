@@ -160,16 +160,27 @@ async function searchNeptronics(query) {
         // AVAILABILITY
         // -----------------------------------------
 
-        let availability = "Available";
+       let availability = "Check store";
 
-        if (
-          /out[\s-]?of[\s-]?stock/i.test(
-            productHtml
-          )
-        ) {
-          availability = "Out of stock";
-        }
+const stockMatch = productHtml.match(
+  /<p[^>]*class=["'][^"']*stock[^"']*["'][^>]*>([\s\S]*?)<\/p>/i
+);
 
+if (stockMatch) {
+  const stockText = cleanText(stockMatch[1]).toLowerCase();
+
+  if (
+    stockText.includes("out of stock") ||
+    stockText.includes("out-of-stock")
+  ) {
+    availability = "Out of stock";
+  } else if (
+    stockText.includes("in stock") ||
+    stockText.includes("available")
+  ) {
+    availability = "Available";
+  }
+}
         // -----------------------------------------
         // ADD RESULT
         // -----------------------------------------
