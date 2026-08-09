@@ -76,8 +76,9 @@ app.get("/", (req, res) => {
     stores: [
       "Neptronics",
       "Hukut",
-      "Bigbyte",
-  "Oliz Store"
+      "Bigbyte IT World",
+  "Oliz Store",
+      "Mudita Store"
     ]
   });
 });
