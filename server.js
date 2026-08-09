@@ -65,7 +65,7 @@ registerStore(
 // HOME / STATUregisterStore(
   "Hukut",
   searchHukut
-);S
+);
 // ==========================================
 
 app.get("/", (req, res) => {
@@ -73,9 +73,9 @@ app.get("/", (req, res) => {
     success: true,
     message: "PriceFinder backend is running 🚀",
     stores: [
-      "Neptronics"
-      "Hukut"
-      "Bigbyte"
+      "Neptronics",
+      "Hukut",
+      "Bigbyte",
   "Oliz Store"
     ]
   });
