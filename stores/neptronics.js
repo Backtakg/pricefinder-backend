@@ -297,7 +297,9 @@ module.exports = searchNeptronics;      console.log(
       );
 
       return [];
-    }
+
+
+
 
     const html = await response.text();
 
