@@ -74,6 +74,9 @@ app.get("/", (req, res) => {
     message: "PriceFinder backend is running 🚀",
     stores: [
       "Neptronics"
+      "Hukut"
+      "Bigbyte"
+  "Oliz Store"
     ]
   });
 });
