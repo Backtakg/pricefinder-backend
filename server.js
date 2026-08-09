@@ -4,10 +4,9 @@ const {
   registerStore,
   searchAllStores
 } = require("./stores/index");
-
-const neptronics = require("./stores/neptronics");
-const bigbyte = require("./stores/bigbyte");
-const xiaominepal = require("./stores/xiaominepal");
+const searchNeptronics = require("./stores/neptronics");
+const searchBigbyte = require("./stores/bigbyte");
+const searchXiaomiNepal = require("./stores/xiaominepal");
 const searchITMonster = require("./stores/itmonster");
 
 
@@ -61,12 +60,25 @@ registerStore(
 
 
 const stores = [
-  neptronics,
-  bigbyte,
-  xiaominepal,
- itmonster
+  {
+    name: "Neptronics",
+    search: searchNeptronics
+  },
+  {
+    name: "Bigbyte",
+    search: searchBigbyte
+  },
+  {
+    name: "Xiaomi Nepal",
+    search: searchXiaomiNepal
+  }
+  {
+    name: "IT Monster World",
+    search: searchITMonster
+  }
+  
 ];
-
+ itmonster
 // ==========================================
 // HOME / STATUregisterStore(
 // ==========================================
