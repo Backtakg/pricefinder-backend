@@ -199,18 +199,70 @@ async function searchNeptronics(query) {
         // ADD RESULT
         // ==========================================
 
-        results.push({
-          name: name,
-          store: "Neptronics",
-          price: price,
-          shipping: 0,
-          total: price,
-          availability: availability,
-          image: image,
-          url: productUrl,
-          source: "Neptronics",
-          lastUpdated: new Date().toISOString()
-        });
+      // -----------------------------------------
+// PRODUCT IMAGE
+// -----------------------------------------
+
+let image = "";
+
+// Try Open Graph image first
+const ogImageMatch = productHtml.match(
+  /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i
+);
+
+if (ogImageMatch) {
+  image = decodeHtml(ogImageMatch[1]);
+}
+
+// Try WooCommerce product image
+if (!image) {
+  const productImageMatch = productHtml.match(
+    /<img[^>]+class=["'][^"']*(?:wp-post-image|woocommerce-product-gallery__image)[^"']*["'][^>]+src=["']([^"']+)["']/i
+  );
+
+  if (productImageMatch) {
+    image = decodeHtml(productImageMatch[1]);
+  }
+}
+
+// Try data-src for lazy-loaded images
+if (!image) {
+  const lazyImageMatch = productHtml.match(
+    /<img[^>]+(?:data-src|data-lazy-src)=["']([^"']+)["']/i
+  );
+
+  if (lazyImageMatch) {
+    image = decodeHtml(lazyImageMatch[1]);
+  }
+}
+
+// Make relative image URL absolute
+if (
+  image &&
+  !image.startsWith("http")
+) {
+  image =
+    "https://neptronics.com" +
+    (image.startsWith("/") ? "" : "/") +
+    image;
+}
+
+// -----------------------------------------
+// ADD RESULT
+// -----------------------------------------
+
+results.push({
+  name: name,
+  store: "Neptronics",
+  price: price,
+  shipping: 0,
+  total: price,
+  availability: availability,
+  url: productUrl,
+  image: image,
+  source: "Neptronics",
+  lastUpdated: new Date().toISOString()
+});
 
       } catch (error) {
         console.log(
