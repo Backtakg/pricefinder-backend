@@ -1,4 +1,3 @@
-
 const cheerio = require("cheerio");
 
 const BASE_URL = "https://neptronics.com.np";
@@ -10,14 +9,31 @@ async function searchNeptronics(query) {
     const searchUrl =
       `${BASE_URL}/?s=${encodeURIComponent(query)}&post_type=product`;
 
+    console.log(`Neptronics URL: ${searchUrl}`);
+
     const response = await fetch(searchUrl, {
+      method: "GET",
+
       headers: {
         "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+
         "Accept":
-          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9"
-      }
+          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
+        "Accept-Language":
+          "en-US,en;q=0.9",
+
+        "Cache-Control":
+          "no-cache",
+
+        "Pragma":
+          "no-cache"
+      },
+
+      redirect: "follow",
+
+      signal: AbortSignal.timeout(20000)
     });
 
     console.log(
@@ -26,8 +42,9 @@ async function searchNeptronics(query) {
 
     if (!response.ok) {
       console.log(
-        `Neptronics search failed with status ${response.status}`
+        `Neptronics search returned HTTP ${response.status}`
       );
+
       return [];
     }
 
@@ -41,6 +58,10 @@ async function searchNeptronics(query) {
 
     const productLinks = [];
     const seen = new Set();
+
+    /*
+     * Find product links
+     */
 
     $("a[href]").each((index, element) => {
       const href = $(element).attr("href");
@@ -58,6 +79,7 @@ async function searchNeptronics(query) {
       }
 
       if (
+        url.startsWith(BASE_URL) &&
         url.includes("/product/") &&
         !seen.has(url)
       ) {
@@ -72,17 +94,35 @@ async function searchNeptronics(query) {
 
     const results = [];
 
+    /*
+     * Visit product pages
+     */
+
     for (
       const url of productLinks.slice(0, 10)
     ) {
       try {
+        console.log(
+          `Neptronics: checking ${url}`
+        );
+
         const productResponse = await fetch(url, {
+          method: "GET",
+
           headers: {
             "User-Agent":
-              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131 Safari/537.36",
+              "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+
             "Accept":
-              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
-          }
+              "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+
+            "Accept-Language":
+              "en-US,en;q=0.9"
+          },
+
+          redirect: "follow",
+
+          signal: AbortSignal.timeout(20000)
         });
 
         console.log(
@@ -100,28 +140,48 @@ async function searchNeptronics(query) {
           cheerio.load(productHtml);
 
         /*
-         * Product name
+         * PRODUCT NAME
          */
 
         let name =
-          page("h1.product_title").first().text().trim();
+          page("h1.product_title")
+            .first()
+            .text()
+            .trim();
 
         if (!name) {
           name =
-            page("h1.entry-title").first().text().trim();
+            page("h1.entry-title")
+              .first()
+              .text()
+              .trim();
         }
 
         if (!name) {
           name =
-            page("h1").first().text().trim();
+            page("h1")
+              .first()
+              .text()
+              .trim();
         }
 
         /*
-         * Product price
+         * PRICE
          */
 
         let priceText =
-          page(".summary .price").first().text().trim();
+          page(".summary .price")
+            .first()
+            .text()
+            .trim();
+
+        if (!priceText) {
+          priceText =
+            page(".price")
+              .first()
+              .text()
+              .trim();
+        }
 
         if (!priceText) {
           priceText =
@@ -131,28 +191,31 @@ async function searchNeptronics(query) {
               .trim();
         }
 
-        if (!priceText) {
-          priceText =
-            page(".price").first().text().trim();
-        }
-
         const price =
           parsePrice(priceText);
 
         /*
-         * Product image
+         * IMAGE
          */
 
         let image =
-          page(".woocommerce-product-gallery img")
+          page(
+            ".woocommerce-product-gallery img"
+          )
             .first()
             .attr("src");
 
         if (!image) {
           image =
-            page("meta[property='og:image']")
+            page(
+              "meta[property='og:image']"
+            )
               .attr("content");
         }
+
+        /*
+         * RESULT
+         */
 
         if (
           name &&
@@ -160,24 +223,45 @@ async function searchNeptronics(query) {
         ) {
           results.push({
             name: name,
+
             price: price,
+
             shipping: 0,
+
             total: price,
+
             store: "Neptronics",
-            availability: "Check store",
+
+            availability:
+              "Check store",
+
             url: url,
-            image: image || ""
+
+            image:
+              image || ""
           });
 
           console.log(
-            `Neptronics: found "${name}" - Rs. ${price}`
+            `Neptronics: FOUND "${name}" - Rs. ${price}`
+          );
+        } else {
+          console.log(
+            `Neptronics: could not extract name/price from ${url}`
           );
         }
 
       } catch (error) {
-        console.log(
+
+        console.error(
           `Neptronics product error: ${error.message}`
         );
+
+        if (error.cause) {
+          console.error(
+            "Neptronics product error cause:",
+            error.cause
+          );
+        }
       }
     }
 
@@ -188,8 +272,49 @@ async function searchNeptronics(query) {
     return results;
 
   } catch (error) {
+
+    /*
+     * IMPORTANT:
+     * Print the complete error so Render tells us
+     * whether this is DNS, TLS, timeout, connection
+     * reset, etc.
+     */
+
     console.error(
-      `Neptronics search error: ${error.message}`
+      "=========================================="
+    );
+
+    console.error(
+      "NEPTRONICS SEARCH ERROR"
+    );
+
+    console.error(
+      "Message:",
+      error.message
+    );
+
+    console.error(
+      "Name:",
+      error.name
+    );
+
+    console.error(
+      "Code:",
+      error.code
+    );
+
+    console.error(
+      "Cause:",
+      error.cause
+    );
+
+    console.error(
+      "Full error:",
+      error
+    );
+
+    console.error(
+      "=========================================="
     );
 
     return [];
@@ -198,15 +323,17 @@ async function searchNeptronics(query) {
 
 
 /*
- * Convert price text into a number.
+ * Convert price text to number
  *
  * Examples:
+ *
  * Rs. 45,000
  * NPR 45,000
  * Rs 45,000.00
  */
 
 function parsePrice(text) {
+
   if (!text) {
     return 0;
   }
@@ -217,14 +344,20 @@ function parsePrice(text) {
       .replace(/[^\d.]/g, " ");
 
   const matches =
-    cleaned.match(/\d+(?:\.\d+)?/g);
+    cleaned.match(
+      /\d+(?:\.\d+)?/g
+    );
 
   if (!matches) {
     return 0;
   }
 
-  for (const value of matches) {
-    const number = Number(value);
+  for (
+    const value of matches
+  ) {
+
+    const number =
+      Number(value);
 
     if (
       Number.isFinite(number) &&
@@ -238,4 +371,5 @@ function parsePrice(text) {
 }
 
 
-module.exports = searchNeptronics;
+module.exports =
+  searchNeptronics;
