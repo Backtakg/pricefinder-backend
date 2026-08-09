@@ -62,8 +62,10 @@ registerStore(
   "Hukut",
   searchHukut
 );
-const searchMudita =
-  require("./stores/mudita");
+registerStore(
+  "Mudita Store",
+  searchMudita
+);
 
 // ==========================================
 // HOME / STATUregisterStore(
