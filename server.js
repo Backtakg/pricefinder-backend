@@ -7,6 +7,7 @@ const {
 
 const searchNeptronics = require("./stores/neptronics");
 const searchBigbyte = require("./stores/bigbyte");
+const searchOliz = require("./stores/oliz");
 
 const app = express();
 
@@ -49,6 +50,10 @@ registerStore(
 registerStore(
   "Bigbyte IT World",
   searchBigbyte
+);
+registerStore(
+  "Oliz Store",
+  searchOliz
 );
 
 // ==========================================
