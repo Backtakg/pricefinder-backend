@@ -2,9 +2,11 @@ const BASE_URL = "https://buysamsung.com.np";
 
 const HEADERS = {
   "User-Agent":
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+
   "Accept":
-    "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+
   "Accept-Language": "en-US,en;q=0.9",
   "Cache-Control": "no-cache"
 };
@@ -15,20 +17,19 @@ const HEADERS = {
 // ============================================================
 
 async function searchSamsung(query) {
-
   const searchTerm = String(query || "").trim();
 
   if (!searchTerm) {
     return [];
   }
 
-  console.log(`Samsung Nepal: searching for "${searchTerm}"`);
+  console.log(
+    `Samsung Nepal: searching for "${searchTerm}"`
+  );
 
   try {
-
     const productUrls = new Set();
 
-    // BuySamsung categories
     const pages = [
       "/mobile",
       "/tablet",
@@ -40,19 +41,20 @@ async function searchSamsung(query) {
       "/display"
     ];
 
-    // --------------------------------------------------------
+    // ========================================================
     // COLLECT PRODUCT LINKS
-    // --------------------------------------------------------
+    // ========================================================
 
     for (const page of pages) {
-
       try {
-
         const url = BASE_URL + page;
 
-        console.log(`Samsung Nepal: checking ${url}`);
+        console.log(
+          `Samsung Nepal: checking ${url}`
+        );
 
-        const response = await fetchWithTimeout(url);
+        const response =
+          await fetchWithTimeout(url);
 
         console.log(
           `Samsung Nepal category status: ${response.status}`
@@ -62,13 +64,15 @@ async function searchSamsung(query) {
           continue;
         }
 
-        const html = await response.text();
+        const html =
+          await response.text();
 
         console.log(
           `Samsung Nepal: received ${html.length} characters`
         );
 
-        const links = extractProductUrls(html);
+        const links =
+          extractProductUrls(html);
 
         for (const link of links) {
           productUrls.add(link);
@@ -79,23 +83,24 @@ async function searchSamsung(query) {
         );
 
       } catch (error) {
-
         console.log(
           `Samsung Nepal category error: ${error.message}`
         );
-
       }
-
     }
 
     console.log(
       `Samsung Nepal: total unique products ${productUrls.size}`
     );
 
+    if (!productUrls.size) {
+      return [];
+    }
 
-    // --------------------------------------------------------
+
+    // ========================================================
     // CHECK PRODUCTS
-    // --------------------------------------------------------
+    // ========================================================
 
     const results = [];
 
@@ -124,6 +129,15 @@ async function searchSamsung(query) {
         const html =
           await response.text();
 
+        if (!html) {
+          continue;
+        }
+
+
+        // ====================================================
+        // NAME
+        // ====================================================
+
         const name =
           extractProductName(html);
 
@@ -131,10 +145,13 @@ async function searchSamsung(query) {
           continue;
         }
 
-        // Ignore generic pages
+        const lowerName =
+          name.toLowerCase();
+
         if (
-          name.toLowerCase().includes("404") ||
-          name.toLowerCase().includes("page not found")
+          lowerName.includes("404") ||
+          lowerName.includes("page not found") ||
+          lowerName.includes("error")
         ) {
           continue;
         }
@@ -144,12 +161,15 @@ async function searchSamsung(query) {
         );
 
 
-        // ------------------------------------------------------
+        // ====================================================
         // SEARCH MATCH
-        // ------------------------------------------------------
+        // ====================================================
 
         if (
-          !matchesSearch(searchTerm, name)
+          !matchesSearch(
+            searchTerm,
+            name
+          )
         ) {
 
           console.log(
@@ -160,9 +180,9 @@ async function searchSamsung(query) {
         }
 
 
-        // ------------------------------------------------------
+        // ====================================================
         // PRICE
-        // ------------------------------------------------------
+        // ====================================================
 
         const price =
           extractSamsungPrice(html);
@@ -181,57 +201,49 @@ async function searchSamsung(query) {
         }
 
 
-        // ------------------------------------------------------
+        // ====================================================
         // IMAGE
-        // ------------------------------------------------------
+        // ====================================================
 
         const image =
           extractProductImage(html);
 
 
-        // ------------------------------------------------------
+        // ====================================================
         // AVAILABILITY
-        // ------------------------------------------------------
+        // ====================================================
 
         const availability =
           extractAvailability(html);
 
 
-        // ------------------------------------------------------
+        // ====================================================
         // RESULT
-        // ------------------------------------------------------
+        // ====================================================
 
         results.push({
+          name: name,
 
-          name,
+          store: "Samsung Nepal",
 
-          store:
-            "Samsung Nepal",
+          price: price,
 
-          price,
+          shipping: 0,
 
-          shipping:
-            0,
+          total: price,
 
-          total:
-            price,
+          currency: "NPR",
 
-          currency:
-            "NPR",
+          availability: availability,
 
-          availability,
+          url: productUrl,
 
-          url:
-            productUrl,
+          image: image,
 
-          image,
-
-          source:
-            "Samsung Nepal",
+          source: "Samsung Nepal",
 
           lastUpdated:
             new Date().toISOString()
-
         });
 
         console.log(
@@ -245,15 +257,47 @@ async function searchSamsung(query) {
         );
 
       }
-
     }
 
 
-    console.log(
-      `Samsung Nepal: returning ${results.length} results for "${searchTerm}"`
+    // ========================================================
+    // REMOVE DUPLICATES
+    // ========================================================
+
+    const uniqueResults = [];
+
+    const seenProducts = new Set();
+
+    for (const product of results) {
+
+      const key =
+        `${product.name.toLowerCase()}|${product.price}`;
+
+      if (seenProducts.has(key)) {
+        continue;
+      }
+
+      seenProducts.add(key);
+
+      uniqueResults.push(product);
+    }
+
+
+    // ========================================================
+    // SORT LOWEST PRICE FIRST
+    // ========================================================
+
+    uniqueResults.sort(
+      (a, b) =>
+        Number(a.total) - Number(b.total)
     );
 
-    return results;
+
+    console.log(
+      `Samsung Nepal: returning ${uniqueResults.length} results for "${searchTerm}"`
+    );
+
+    return uniqueResults;
 
   } catch (error) {
 
@@ -267,7 +311,7 @@ async function searchSamsung(query) {
 
 
 // ============================================================
-// FETCH
+// FETCH WITH TIMEOUT
 // ============================================================
 
 async function fetchWithTimeout(url) {
@@ -276,12 +320,15 @@ async function fetchWithTimeout(url) {
     url,
     {
       method: "GET",
+
       headers: HEADERS,
+
       redirect: "follow",
-      signal: AbortSignal.timeout(20000)
+
+      signal:
+        AbortSignal.timeout(20000)
     }
   );
-
 }
 
 
@@ -292,7 +339,9 @@ async function fetchWithTimeout(url) {
 function extractProductUrls(html) {
 
   const urls = [];
-  const seen = new Set();
+
+  const seen =
+    new Set();
 
   const matches =
     html.matchAll(
@@ -319,8 +368,8 @@ function extractProductUrls(html) {
     } catch {
 
       continue;
-
     }
+
 
     url =
       url
@@ -360,10 +409,9 @@ function extractProductUrls(html) {
     ) {
 
       seen.add(url);
+
       urls.push(url);
-
     }
-
   }
 
   return urls;
@@ -382,10 +430,11 @@ function extractProductName(html) {
 
     /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i,
 
+    /<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i,
+
     /<h1[^>]*>([\s\S]*?)<\/h1>/i,
 
     /<title[^>]*>([\s\S]*?)<\/title>/i
-
   ];
 
 
@@ -410,15 +459,17 @@ function extractProductName(html) {
         /\s*[-|–—]\s*BuySamsung.*$/i,
         ""
       )
+      .replace(
+        /\s*[-|–—]\s*Samsung.*$/i,
+        ""
+      )
       .trim();
 
 
     if (name) {
       return name;
     }
-
   }
-
 
   return "";
 }
@@ -433,9 +484,9 @@ function extractSamsungPrice(html) {
   const prices = [];
 
 
-  // ----------------------------------------------------------
-  // 1. JSON-LD
-  // ----------------------------------------------------------
+  // ==========================================================
+  // METHOD 1 — JSON-LD
+  // ==========================================================
 
   const jsonMatches = [
     ...html.matchAll(
@@ -452,7 +503,6 @@ function extractSamsungPrice(html) {
         JSON.parse(
           match[1].trim()
         );
-
 
       const objects =
         Array.isArray(data)
@@ -478,6 +528,11 @@ function extractSamsungPrice(html) {
 
         for (const offer of offers) {
 
+          if (!offer) {
+            continue;
+          }
+
+
           const price =
             parsePrice(
               offer.price
@@ -489,17 +544,13 @@ function extractSamsungPrice(html) {
           ) {
 
             prices.push(price);
-
           }
-
         }
-
       }
 
     } catch {
-      // Continue
+      // Ignore invalid JSON-LD
     }
-
   }
 
 
@@ -508,13 +559,12 @@ function extractSamsungPrice(html) {
     return Math.min(
       ...new Set(prices)
     );
-
   }
 
 
-  // ----------------------------------------------------------
-  // 2. Rs. / NPR prices
-  // ----------------------------------------------------------
+  // ==========================================================
+  // METHOD 2 — NPR / RS / RUPEE
+  // ==========================================================
 
   const patterns = [
 
@@ -527,7 +577,6 @@ function extractSamsungPrice(html) {
     /रू\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g,
 
     /रु\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g
-
   ];
 
 
@@ -539,7 +588,9 @@ function extractSamsungPrice(html) {
     ) {
 
       const price =
-        parsePrice(match[1]);
+        parsePrice(
+          match[1]
+        );
 
 
       if (
@@ -547,18 +598,17 @@ function extractSamsungPrice(html) {
       ) {
 
         prices.push(price);
-
       }
-
     }
-
   }
 
 
   if (prices.length) {
 
     const unique =
-      [...new Set(prices)];
+      [
+        ...new Set(prices)
+      ];
 
 
     console.log(
@@ -566,21 +616,23 @@ function extractSamsungPrice(html) {
     );
 
 
-    return Math.min(...unique);
-
+    return Math.min(
+      ...unique
+    );
   }
 
 
-  // ----------------------------------------------------------
-  // 3. itemprop
-  // ----------------------------------------------------------
+  // ==========================================================
+  // METHOD 3 — ITEMPROP PRICE
+  // ==========================================================
 
   const itemPatterns = [
 
     /itemprop=["']price["'][^>]*content=["']([\d,.]+)["']/i,
 
-    /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i
+    /content=["']([\d,.]+)["'][^>]*itemprop=["']price["']/i,
 
+    /itemprop=["']price["'][^>]*>\s*([\d,.]+)/i
   ];
 
 
@@ -589,14 +641,15 @@ function extractSamsungPrice(html) {
     const match =
       html.match(pattern);
 
-
     if (!match) {
       continue;
     }
 
 
     const price =
-      parsePrice(match[1]);
+      parsePrice(
+        match[1]
+      );
 
 
     if (
@@ -604,9 +657,67 @@ function extractSamsungPrice(html) {
     ) {
 
       return price;
-
     }
+  }
 
+
+  // ==========================================================
+  // METHOD 4 — PRICE HTML BLOCKS
+  // ==========================================================
+
+  const priceBlocks = [
+    ...html.matchAll(
+      /class=["'][^"']*(?:price|sale-price|selling-price|current-price|product-price)[^"']*["'][^>]*>([\s\S]{0,1200})<\/(?:span|div|p|strong|b)>/gi
+    )
+  ];
+
+
+  for (const block of priceBlocks) {
+
+    const content =
+      block[1];
+
+
+    const localPatterns = [
+
+      /Rs\.?\s*([0-9][0-9,]*)/i,
+
+      /NPR\s*([0-9][0-9,]*)/i,
+
+      /₨\s*([0-9][0-9,]*)/,
+
+      /रू\s*([0-9][0-9,]*)/,
+
+      /रु\s*([0-9][0-9,]*)/
+    ];
+
+
+    for (
+      const pattern of
+      localPatterns
+    ) {
+
+      const match =
+        content.match(pattern);
+
+      if (!match) {
+        continue;
+      }
+
+
+      const price =
+        parsePrice(
+          match[1]
+        );
+
+
+      if (
+        validPrice(price)
+      ) {
+
+        return price;
+      }
+    }
   }
 
 
@@ -615,7 +726,7 @@ function extractSamsungPrice(html) {
 
 
 // ============================================================
-// IMAGE
+// PRODUCT IMAGE
 // ============================================================
 
 function extractProductImage(html) {
@@ -626,10 +737,13 @@ function extractProductImage(html) {
 
     /<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i,
 
+    /<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i,
+
     /<img[^>]*src=["']([^"']+)["']/i,
 
-    /<img[^>]*data-src=["']([^"']+)["']/i
+    /<img[^>]*data-src=["']([^"']+)["']/i,
 
+    /<img[^>]*data-lazy-src=["']([^"']+)["']/i
   ];
 
 
@@ -645,11 +759,11 @@ function extractProductImage(html) {
     ) {
 
       return normalizeUrl(
-        decodeHtml(match[1])
+        decodeHtml(
+          match[1]
+        )
       );
-
     }
-
   }
 
 
@@ -664,26 +778,29 @@ function extractProductImage(html) {
 function extractAvailability(html) {
 
   const text =
-    html.toLowerCase();
+    cleanText(
+      html
+    ).toLowerCase();
 
 
   if (
     text.includes("out of stock") ||
-    text.includes("sold out")
+    text.includes("out-of-stock") ||
+    text.includes("sold out") ||
+    text.includes("sold-out")
   ) {
 
     return "Out of stock";
-
   }
 
 
   if (
     text.includes("in stock") ||
+    text.includes("in-stock") ||
     text.includes("available")
   ) {
 
     return "Available";
-
   }
 
 
@@ -695,7 +812,10 @@ function extractAvailability(html) {
 // SEARCH MATCH
 // ============================================================
 
-function matchesSearch(query, name) {
+function matchesSearch(
+  query,
+  name
+) {
 
   const search =
     normalizeSearch(query);
@@ -712,6 +832,7 @@ function matchesSearch(query, name) {
   }
 
 
+  // Exact phrase
   if (
     product.includes(search)
   ) {
@@ -728,6 +849,11 @@ function matchesSearch(query, name) {
       );
 
 
+  if (!words.length) {
+    return false;
+  }
+
+
   let matched = 0;
 
 
@@ -738,10 +864,12 @@ function matchesSearch(query, name) {
     ) {
 
       matched++;
-      continue;
 
+      continue;
     }
 
+
+    // Singular/plural matching
 
     if (
       word.endsWith("s") &&
@@ -751,8 +879,8 @@ function matchesSearch(query, name) {
     ) {
 
       matched++;
-      continue;
 
+      continue;
     }
 
 
@@ -764,9 +892,7 @@ function matchesSearch(query, name) {
     ) {
 
       matched++;
-
     }
-
   }
 
 
@@ -780,25 +906,32 @@ function matchesSearch(query, name) {
 
 
 // ============================================================
-// HELPERS
+// NORMALIZE SEARCH
 // ============================================================
 
 function normalizeSearch(text) {
 
   return String(text || "")
+
     .toLowerCase()
+
     .replace(
       /[^a-z0-9]+/g,
       " "
     )
+
     .replace(
       /\s+/g,
       " "
     )
-    .trim();
 
+    .trim();
 }
 
+
+// ============================================================
+// PARSE PRICE
+// ============================================================
 
 function parsePrice(value) {
 
@@ -806,13 +939,44 @@ function parsePrice(value) {
     value === undefined ||
     value === null
   ) {
+
     return null;
   }
 
 
   const cleaned =
     String(value)
-      .replace(/,/g, "")
+
+      .replace(
+        /,/g,
+        ""
+      )
+
+      .replace(
+        /Rs\.?/gi,
+        ""
+      )
+
+      .replace(
+        /NPR/gi,
+        ""
+      )
+
+      .replace(
+        /₨/g,
+        ""
+      )
+
+      .replace(
+        /रू/g,
+        ""
+      )
+
+      .replace(
+        /रु/g,
+        ""
+      )
+
       .trim();
 
 
@@ -826,6 +990,10 @@ function parsePrice(value) {
 }
 
 
+// ============================================================
+// VALID PRICE
+// ============================================================
+
 function validPrice(price) {
 
   return (
@@ -833,9 +1001,12 @@ function validPrice(price) {
     price >= 500 &&
     price < 10000000
   );
-
 }
 
+
+// ============================================================
+// NORMALIZE URL
+// ============================================================
 
 function normalizeUrl(url) {
 
@@ -847,6 +1018,7 @@ function normalizeUrl(url) {
   if (
     url.startsWith("//")
   ) {
+
     return "https:" + url;
   }
 
@@ -854,6 +1026,7 @@ function normalizeUrl(url) {
   if (
     url.startsWith("/")
   ) {
+
     return BASE_URL + url;
   }
 
@@ -862,47 +1035,91 @@ function normalizeUrl(url) {
 }
 
 
+// ============================================================
+// CLEAN TEXT
+// ============================================================
+
 function cleanText(text) {
 
   return String(text || "")
+
     .replace(
       /<script[\s\S]*?<\/script>/gi,
       " "
     )
+
     .replace(
       /<style[\s\S]*?<\/style>/gi,
       " "
     )
+
     .replace(
       /<[^>]*>/g,
       " "
     )
+
     .replace(
       /&nbsp;/gi,
       " "
     )
+
     .replace(
       /\s+/g,
       " "
     )
-    .trim();
 
+    .trim();
 }
 
+
+// ============================================================
+// DECODE HTML
+// ============================================================
 
 function decodeHtml(text) {
 
   return String(text || "")
-    .replace(/&amp;/gi, "&")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/gi, "'")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&#8377;/gi, "₨")
-    .replace(/&#x20B9;/gi, "₨");
 
+    .replace(
+      /&amp;/gi,
+      "&"
+    )
+
+    .replace(
+      /&quot;/gi,
+      '"'
+    )
+
+    .replace(
+      /&#39;/gi,
+      "'"
+    )
+
+    .replace(
+      /&lt;/gi,
+      "<"
+    )
+
+    .replace(
+      /&gt;/gi,
+      ">"
+    )
+
+    .replace(
+      /&#8377;/gi,
+      "₨"
+    )
+
+    .replace(
+      /&#x20B9;/gi,
+      "₨"
+    );
 }
 
+
+// ============================================================
+// EXPORT
+// ============================================================
 
 module.exports =
   searchSamsung;
