@@ -11,6 +11,7 @@ const searchOliz = require("./stores/oliz");
 const searchHukut = require("./stores/hukut");
 const searchMudita =
   require("./stores/mudita");
+const searchEvoStore = require("./stores/evostore");
 
 const app = express();
 
@@ -66,6 +67,10 @@ registerStore(
   "Mudita Store",
   searchMudita
 );
+registerStore(
+  "EvoStore",
+  searchEvoStore
+);
 
 // ==========================================
 // HOME / STATUregisterStore(
@@ -80,7 +85,9 @@ app.get("/", (req, res) => {
       "Hukut",
       "Bigbyte IT World",
   "Oliz Store",
-      "Mudita Store"
+      "Mudita Store",
+      "EvoStore"
+      
     ]
   });
 });
