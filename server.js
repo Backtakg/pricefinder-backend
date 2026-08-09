@@ -63,9 +63,6 @@ registerStore(
 
 // ==========================================
 // HOME / STATUregisterStore(
-  "Hukut",
-  searchHukut
-);
 // ==========================================
 
 app.get("/", (req, res) => {
