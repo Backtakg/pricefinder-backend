@@ -446,10 +446,9 @@ function extractProductName(html) {
 
 function extractXiaomiPrice(html) {
 
-  // ----------------------------------------------------------
-  // METHOD 1
-  // JSON-LD PRODUCT OFFERS
-  // ----------------------------------------------------------
+  // ==========================================================
+  // 1. JSON-LD
+  // ==========================================================
 
   const jsonMatches = [
     ...html.matchAll(
@@ -457,157 +456,154 @@ function extractXiaomiPrice(html) {
     )
   ];
 
-  for (
-    const match of jsonMatches
-  ) {
-
+  for (const match of jsonMatches) {
     try {
 
-      const data =
-        JSON.parse(
-          match[1].trim()
-        );
+      const data = JSON.parse(match[1].trim());
 
-      const objects =
-        Array.isArray(data)
-          ? data
-          : [data];
+      const objects = Array.isArray(data)
+        ? data
+        : [data];
 
-      for (
-        const object of objects
-      ) {
+      for (const object of objects) {
 
-        if (
-          !object ||
-          !object.offers
-        ) {
+        if (!object || !object.offers) {
           continue;
         }
 
-        const offers =
-          Array.isArray(object.offers)
-            ? object.offers
-            : [object.offers];
+        const offers = Array.isArray(object.offers)
+          ? object.offers
+          : [object.offers];
 
-        for (
-          const offer of offers
-        ) {
+        for (const offer of offers) {
 
-          if (
-            !offer
-          ) {
-            continue;
-          }
+          const price = parsePrice(offer.price);
 
-          const price =
-            parsePrice(
-              offer.price
-            );
-
-          if (
-            validPrice(price)
-          ) {
+          if (validPrice(price)) {
 
             console.log(
               `Xiaomi Nepal: price from JSON-LD = ${price}`
             );
 
             return price;
-
           }
-
         }
-
       }
 
     } catch {
-
-      // Continue
-
+      // Continue to next method
     }
-
   }
 
 
-  // ----------------------------------------------------------
-  // METHOD 2
-  // EXPLICIT NPR / RS PRICE
+  // ==========================================================
+  // 2. Xiaomi Nepal visible price format
   //
-  // This is deliberately checked BEFORE generic numbers.
-  // ----------------------------------------------------------
+  // Example:
+  // 6GB+128GB रू 24,999
+  // 8GB+256GB रू 27,999
+  // ==========================================================
 
-  const rupeePatterns = [
+  const xiaomiRupeePatterns = [
 
-    /(?:NPR|Rs\.?|₨|रु\.?)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
+    /रू\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g,
 
-    /([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:NPR|Rs\.?|₨|रु\.?)/gi
+    /रु\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g,
+
+    /Rs\.?\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
+
+    /NPR\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/gi,
+
+    /₨\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/g
 
   ];
 
-  const rupeePrices = [];
+  const prices = [];
 
-  for (
-    const pattern of rupeePatterns
-  ) {
+  for (const pattern of xiaomiRupeePatterns) {
 
-    const matches =
-      html.matchAll(pattern);
+    for (const match of html.matchAll(pattern)) {
 
-    for (
-      const match of matches
-    ) {
+      const price = parsePrice(match[1]);
 
-      const price =
-        parsePrice(
-          match[1]
-        );
-
-      if (
-        validPrice(price)
-      ) {
-
-        rupeePrices.push(
-          price
-        );
-
+      if (validPrice(price)) {
+        prices.push(price);
       }
-
     }
-
   }
 
-  if (
-    rupeePrices.length
-  ) {
+  if (prices.length > 0) {
 
-    // Prefer realistic Nepalese product prices.
-    const realistic =
-      rupeePrices.filter(
-        price =>
-          price >= 500
-      );
+    // Remove duplicates
+    const uniquePrices = [
+      ...new Set(prices)
+    ];
 
-    if (
-      realistic.length
-    ) {
+    console.log(
+      `Xiaomi Nepal: found visible prices: ${uniquePrices.join(", ")}`
+    );
+
+    /*
+     * Xiaomi pages can show multiple variants.
+     *
+     * We use the LOWEST valid selling price as the
+     * product's "starting price".
+     *
+     * Example:
+     * 24,999
+     * 27,999
+     *
+     * Result:
+     * 24,999
+     */
+
+    const lowestPrice =
+      Math.min(...uniquePrices);
+
+    console.log(
+      `Xiaomi Nepal: selected starting price = ${lowestPrice}`
+    );
+
+    return lowestPrice;
+  }
+
+
+  // ==========================================================
+  // 3. HTML entity version of रू
+  // ==========================================================
+
+  const entityPatterns = [
+
+    /(?:&#x930;&#x2370;|&#x0930;&#x0942;)\s*([0-9][0-9,]+)/gi,
+
+    /(?:&#x930;&#x0941;)\s*([0-9][0-9,]+)/gi
+
+  ];
+
+  for (const pattern of entityPatterns) {
+
+    const match = html.match(pattern);
+
+    if (!match) {
+      continue;
+    }
+
+    const price = parsePrice(match[1]);
+
+    if (validPrice(price)) {
 
       console.log(
-        `Xiaomi Nepal: explicit NPR price = ${realistic[0]}`
+        `Xiaomi Nepal: price from HTML entity = ${price}`
       );
 
-      return realistic[0];
-
+      return price;
     }
-
-    return rupeePrices[0];
-
   }
 
 
-  // ----------------------------------------------------------
-  // METHOD 3
-  // ITEMPROP PRICE
-  // ----------------------------------------------------------
+  // ==========================================================
+  // 4. itemprop price
+  // ==========================================================
 
   const itemPatterns = [
 
@@ -619,80 +615,87 @@ function extractXiaomiPrice(html) {
 
   ];
 
-  for (
-    const pattern of itemPatterns
-  ) {
+  for (const pattern of itemPatterns) {
 
-    const match =
-      html.match(pattern);
+    const match = html.match(pattern);
 
     if (!match) {
       continue;
     }
 
-    const price =
-      parsePrice(
-        match[1]
+    const price = parsePrice(match[1]);
+
+    if (validPrice(price)) {
+
+      console.log(
+        `Xiaomi Nepal: price from itemprop = ${price}`
       );
 
-    if (
-      validPrice(price)
-    ) {
-
       return price;
-
     }
-
   }
 
 
-  // ----------------------------------------------------------
-  // METHOD 4
-  // PRICE-RELATED HTML
-  // ----------------------------------------------------------
+  // ==========================================================
+  // 5. Price-related HTML blocks
+  // ==========================================================
 
   const priceBlocks = [
     ...html.matchAll(
-      /class=["'][^"']*(?:price|sale-price|selling-price|current-price|product-price)[^"']*["'][^>]*>([\s\S]{0,1000})<\/(?:span|div|p|strong|b)>/gi
+      /class=["'][^"']*(?:price|sale-price|selling-price|current-price|product-price)[^"']*["'][^>]*>([\s\S]{0,1500})<\/(?:span|div|p|strong|b)>/gi
     )
   ];
 
-  for (
-    const block of priceBlocks
-  ) {
+  for (const block of priceBlocks) {
 
-    const rupee =
-      block[1].match(
-        /(?:NPR|Rs\.?|₨|रु\.?)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)/i
-      );
+    const content = block[1];
 
-    if (rupee) {
+    const patterns = [
 
-      const price =
-        parsePrice(
-          rupee[1]
-        );
+      /रू\s*([0-9][0-9,]+)/,
 
-      if (
-        validPrice(price)
-      ) {
+      /रु\s*([0-9][0-9,]+)/,
 
-        return price;
+      /Rs\.?\s*([0-9][0-9,]+)/i,
 
+      /NPR\s*([0-9][0-9,]+)/i,
+
+      /₨\s*([0-9][0-9,]+)/
+
+    ];
+
+    for (const pattern of patterns) {
+
+      const match = content.match(pattern);
+
+      if (!match) {
+        continue;
       }
 
-    }
+      const price = parsePrice(match[1]);
 
+      if (validPrice(price)) {
+
+        console.log(
+          `Xiaomi Nepal: price from price block = ${price}`
+        );
+
+        return price;
+      }
+    }
   }
 
 
-  // ----------------------------------------------------------
-  // NOTHING RELIABLE FOUND
-  // ----------------------------------------------------------
+  // ==========================================================
+  // 6. Nothing reliable found
+  // ==========================================================
+
+  console.log(
+    "Xiaomi Nepal: no reliable price found"
+  );
 
   return null;
 }
-
 
 // ============================================================
 // IMAGE
