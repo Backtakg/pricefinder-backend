@@ -7,13 +7,10 @@ const {
 
 const searchNeptronics = require("./stores/neptronics");
 const searchBigbyte = require("./stores/bigbyte");
-const searchOliz = require("./stores/oliz");
-const searchHukut = require("./stores/hukut");
-const searchMudita =
-  require("./stores/mudita");
-const searchEvoStore = require("./stores/evostore");
+
 const searchITMonster = require("./stores/itmonster");
-const searchThulo = require("./stores/thulo");
+
+const xiaominepal = require("./stores/xiaominepal");
 
 const app = express();
 
@@ -56,31 +53,19 @@ registerStore(
 registerStore(
   "Bigbyte IT World",
   searchBigbyte
-);
-registerStore(
-  "Oliz Store",
-  searchOliz
-);
-registerStore(
-  "Hukut",
-  searchHukut
-);
-registerStore(
-  "Mudita Store",
-  searchMudita
-);
-registerStore(
-  "EvoStore",
-  searchEvoStore
+
 );
 registerStore(
   "IT Monster",
   searchITMonster
 );
-registerStore(
-  "Thulo",
-  searchThulo
+
 );
+const stores = [
+  neptronics,
+  bigbyte,
+  xiaominepal
+];
 
 // ==========================================
 // HOME / STATUregisterStore(
@@ -92,13 +77,9 @@ app.get("/", (req, res) => {
     message: "PriceFinder backend is running 🚀",
     stores: [
       "Neptronics",
-      "Hukut",
       "Bigbyte IT World",
-  "Oliz Store",
-      "Mudita Store",
-      "EvoStore",
       "IT Monster",
-      "Thulo"
+      "xiaomi"
       
     ]
   });
