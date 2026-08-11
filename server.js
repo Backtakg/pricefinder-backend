@@ -103,7 +103,7 @@ registerStore(
 );
 registerStore(
   "Star HiFi",
-  searchStarHifi
+ searchStarHifi
   };
 // ============================================================
 // HOME
