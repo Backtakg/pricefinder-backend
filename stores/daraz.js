@@ -1,470 +1,617 @@
 const axios = require("axios");
 const cheerio = require("cheerio");
 
+// ============================================================
+// DARAZ NEPAL SCRAPER
+// ============================================================
+
 async function searchDaraz(searchTerm) {
-  console.log(`Daraz: searching for "${searchTerm}"`);
+
+  console.log(
+    `Daraz: searching for "${searchTerm}"`
+  );
 
   const results = [];
-  const seen = new Set();
 
   try {
+
     const url =
       `https://www.daraz.com.np/catalog/?q=${encodeURIComponent(searchTerm)}`;
 
-    console.log(`Daraz URL: ${url}`);
+    console.log(
+      `Daraz URL: ${url}`
+    );
 
-    const response = await axios.get(url, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 " +
-          "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-        Accept:
-          "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        Referer: "https://www.daraz.com.np/",
-        Connection: "keep-alive"
-      },
-      timeout: 30000,
-      maxRedirects: 10
-    });
+    const response =
+      await axios.get(url, {
 
-    console.log(`Daraz status: ${response.status}`);
+        timeout: 20000,
 
-    const html = response.data;
+        headers: {
 
-    if (!html || typeof html !== "string") {
-      console.log("Daraz: empty/invalid response");
-      return [];
-    }
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
 
-    console.log(`Daraz: received ${html.length} characters`);
+          "Accept":
+            "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
 
-    const $ = cheerio.load(html);
+          "Accept-Language":
+            "en-US,en;q=0.9",
 
-    const searchLower = String(searchTerm).toLowerCase().trim();
+          "Cache-Control":
+            "no-cache",
 
-    function cleanText(value) {
-      return String(value || "")
-        .replace(/\\u002F/g, "/")
-        .replace(/\\u0026/g, "&")
-        .replace(/\\"/g, '"')
-        .replace(/\\'/g, "'")
-        .replace(/\s+/g, " ")
-        .trim();
-    }
+          "Pragma":
+            "no-cache"
 
-    function parsePrice(value) {
-      if (value === null || value === undefined) return null;
+        }
 
-      const text = String(value)
-        .replace(/NPR/gi, "")
-        .replace(/Rs\.?/gi, "")
-        .replace(/रु\.?/gi, "")
-        .replace(/,/g, "")
-        .trim();
-
-      const match = text.match(/\d+(?:\.\d+)?/);
-
-      if (!match) return null;
-
-      const price = Number(match[0]);
-
-      if (!Number.isFinite(price) || price <= 0) {
-        return null;
-      }
-
-      return price;
-    }
-
-    function absoluteUrl(value) {
-      if (!value) return "";
-
-      let result = cleanText(value);
-
-      if (result.startsWith("//")) {
-        return "https:" + result;
-      }
-
-      if (result.startsWith("/")) {
-        return "https://www.daraz.com.np" + result;
-      }
-
-      return result;
-    }
-
-    function addResult(product) {
-      if (!product) return;
-
-      const name = cleanText(
-        product.name ||
-        product.title ||
-        product.itemTitle ||
-        product.productName
-      );
-
-      if (!name) return;
-
-      /*
-       * Only return products matching the user's search.
-       */
-      if (!name.toLowerCase().includes(searchLower)) {
-        return;
-      }
-
-      const price = parsePrice(
-        product.price ??
-        product.salePrice ??
-        product.currentPrice ??
-        product.priceShow
-      );
-
-      if (!price) {
-        return;
-      }
-
-      const productUrl = absoluteUrl(
-        product.url ||
-        product.productUrl ||
-        product.itemUrl ||
-        product.link
-      );
-
-      const image = absoluteUrl(
-        product.image ||
-        product.imageUrl ||
-        product.pic ||
-        product.mainImage
-      );
-
-      const key = `${name}|${price}|${productUrl}`;
-
-      if (seen.has(key)) {
-        return;
-      }
-
-      seen.add(key);
-
-      results.push({
-        name,
-        store: "Daraz",
-        price,
-        shipping: 0,
-        total: price,
-        availability: "Check store",
-        url: productUrl,
-        image: image || null,
-        source: "Daraz",
-        lastUpdated: new Date().toISOString()
       });
 
-      console.log(
-        `Daraz product found: ${name} | NPR ${price}`
-      );
-    }
+    console.log(
+      `Daraz status: ${response.status}`
+    );
 
-    /*
-     * ---------------------------------------------------------
-     * METHOD 1: Extract product objects from page source
-     * ---------------------------------------------------------
-     */
-
-    const source = html;
-
-    /*
-     * Daraz frequently stores product information in escaped
-     * JSON inside script tags.
-     */
-
-    const jsonPatterns = [
-      /"itemTitle"\s*:\s*"([^"]+)"/g,
-      /"productName"\s*:\s*"([^"]+)"/g,
-      /"title"\s*:\s*"([^"]+)"/g
-    ];
-
-    /*
-     * Search for product-like JSON objects.
-     */
-
-    const objectRegex =
-      /\{(?:[^{}"]|"[^"]*"|\{[^{}]*\}){0,3000}(?:"itemTitle"|"productName"|"priceShow"|"salePrice"|"productUrl")(?:[^{}"]|"[^"]*"|\{[^{}]*\}){0,3000}\}/g;
-
-    const objectMatches = source.match(objectRegex) || [];
+    const html =
+      response.data;
 
     console.log(
-      `Daraz: found ${objectMatches.length} possible embedded product objects`
+      `Daraz: received ${html.length} characters`
     );
 
-    for (const rawObject of objectMatches) {
-      try {
-        const text = rawObject
-          .replace(/\\"/g, '"')
-          .replace(/\\\\/g, "\\");
+    const $ =
+      cheerio.load(html);
 
-        const nameMatch = text.match(
-          /"(?:itemTitle|productName|name|title)"\s*:\s*"([^"]+)"/i
-        );
-
-        const priceMatch = text.match(
-          /"(?:priceShow|salePrice|currentPrice|price)"\s*:\s*"?([\d,.]+)"?/i
-        );
-
-        const urlMatch = text.match(
-          /"(?:productUrl|itemUrl|url|link)"\s*:\s*"([^"]+)"/i
-        );
-
-        const imageMatch = text.match(
-          /"(?:imageUrl|image|pic|mainImage)"\s*:\s*"([^"]+)"/i
-        );
-
-        if (nameMatch) {
-          addResult({
-            name: nameMatch[1],
-            price: priceMatch ? priceMatch[1] : null,
-            url: urlMatch ? urlMatch[1] : "",
-            image: imageMatch ? imageMatch[1] : ""
-          });
-        }
-      } catch (error) {
-        // Ignore malformed object
-      }
-    }
-
-    /*
-     * ---------------------------------------------------------
-     * METHOD 2: Parse script tags containing JSON
-     * ---------------------------------------------------------
-     */
-
-    $("script").each((index, element) => {
-      const scriptText = $(element).html();
-
-      if (!scriptText) return;
-
-      if (
-        !scriptText.includes("itemTitle") &&
-        !scriptText.includes("priceShow") &&
-        !scriptText.includes("productUrl") &&
-        !scriptText.includes("salePrice")
-      ) {
-        return;
-      }
-
-      /*
-       * Extract product names, prices, URLs and images using
-       * nearby JSON fields.
-       */
-
-      const names = [
-        ...scriptText.matchAll(
-          /"(?:itemTitle|productName|productTitle)"\s*:\s*"([^"]+)"/gi
-        )
-      ];
-
-      for (const match of names) {
-        const name = cleanText(match[1]);
-
-        if (!name.toLowerCase().includes(searchLower)) {
-          continue;
-        }
-
-        /*
-         * Look around the product name for a price.
-         */
-
-        const position = match.index || 0;
-
-        const nearby = scriptText.slice(
-          Math.max(0, position - 2500),
-          Math.min(scriptText.length, position + 5000)
-        );
-
-        const priceMatch = nearby.match(
-          /"(?:priceShow|salePrice|currentPrice|price)"\s*:\s*"?([\d,.]+)"?/i
-        );
-
-        const urlMatch = nearby.match(
-          /"(?:productUrl|itemUrl|productUrlKey)"\s*:\s*"([^"]+)"/i
-        );
-
-        const imageMatch = nearby.match(
-          /"(?:imageUrl|image|pic)"\s*:\s*"([^"]+)"/i
-        );
-
-        addResult({
-          name,
-          price: priceMatch ? priceMatch[1] : null,
-          url: urlMatch ? urlMatch[1] : "",
-          image: imageMatch ? imageMatch[1] : ""
-        });
-      }
-    });
-
-    /*
-     * ---------------------------------------------------------
-     * METHOD 3: Normal HTML product cards
-     * ---------------------------------------------------------
-     */
-
-    const possibleCards = $(
-      '[data-qa-locator="product-item"], ' +
-      '[class*="Bm3ON"], ' +
-      '[class*="product"], ' +
-      '[class*="item"]'
-    );
-
-    console.log(
-      `Daraz: found ${possibleCards.length} possible HTML product cards`
-    );
-
-    possibleCards.each((index, element) => {
-      try {
-        const card = $(element);
-
-        const cardText = cleanText(card.text());
-
-        if (!cardText.toLowerCase().includes(searchLower)) {
-          return;
-        }
-
-        /*
-         * Find product title.
-         */
-
-        let name = "";
-
-        const titleElement = card.find(
-          '[title], ' +
-          '[class*="title"], ' +
-          '[class*="name"], ' +
-          'a'
-        ).first();
-
-        if (titleElement.length) {
-          name =
-            titleElement.attr("title") ||
-            titleElement.text();
-        }
-
-        name = cleanText(name);
-
-        if (!name || !name.toLowerCase().includes(searchLower)) {
-          return;
-        }
-
-        /*
-         * Find price.
-         */
-
-        const priceElement = card.find(
-          '[class*="price"], ' +
-          '[data-qa-locator*="price"]'
-        ).first();
-
-        let priceText = priceElement.text();
-
-        if (!priceText) {
-          priceText = cardText;
-        }
-
-        const price = parsePrice(priceText);
-
-        if (!price) {
-          return;
-        }
-
-        /*
-         * Find product URL.
-         */
-
-        const link = card.find("a[href]").first();
-
-        const productUrl = link.length
-          ? link.attr("href")
-          : "";
-
-        /*
-         * Find image.
-         */
-
-        const imageElement = card.find("img").first();
-
-        const image =
-          imageElement.attr("src") ||
-          imageElement.attr("data-src") ||
-          imageElement.attr("data-original") ||
-          "";
-
-        addResult({
-          name,
-          price,
-          url: productUrl,
-          image
-        });
-      } catch (error) {
-        // Ignore individual card errors.
-      }
-    });
-
-    /*
-     * ---------------------------------------------------------
-     * METHOD 4: Extract product URLs from HTML
-     * ---------------------------------------------------------
-     */
+    // ========================================================
+    // FIND DARAZ PRODUCT LINKS
+    // ========================================================
 
     const productLinks = new Set();
 
-    $("a[href]").each((index, element) => {
-      const href = $(element).attr("href");
+    $("a").each(
+      (index, element) => {
 
-      if (!href) return;
+        const href =
+          $(element).attr("href");
 
-      const absolute = absoluteUrl(href);
+        if (!href) {
+          return;
+        }
 
-      /*
-       * Daraz product URLs commonly contain "-i".
-       */
+        let link =
+          href.trim();
 
-      if (
-        absolute.includes("daraz.com.np/products/") ||
-        /-i\d+\.html/i.test(absolute)
-      ) {
-        productLinks.add(absolute);
+        // ----------------------------------------------------
+        // Convert relative URLs
+        // ----------------------------------------------------
+
+        if (
+          link.startsWith("/")
+        ) {
+
+          link =
+            `https://www.daraz.com.np${link}`;
+
+        }
+
+        // ----------------------------------------------------
+        // Daraz product URL detection
+        // ----------------------------------------------------
+
+        if (
+          link.includes(
+            "daraz.com.np"
+          )
+          &&
+          (
+            link.includes("-i")
+            ||
+            link.includes(".html")
+            ||
+            link.includes("/products/")
+          )
+        ) {
+
+          // Remove tracking/query parameters
+          link =
+            link.split("?")[0];
+
+          productLinks.add(
+            link
+          );
+
+        }
+
       }
-    });
-
-    console.log(
-      `Daraz: found ${productLinks.size} possible product URLs`
     );
 
-    /*
-     * ---------------------------------------------------------
-     * Final cleanup
-     * ---------------------------------------------------------
-     */
+    console.log(
+      `Daraz: found ${productLinks.size} product links`
+    );
 
-    const finalResults = results
-      .filter((item) => {
-        return (
-          item &&
-          item.name &&
-          Number.isFinite(item.price) &&
-          item.price > 0
+    // ========================================================
+    // FALLBACK: SEARCH RAW HTML FOR PRODUCT URLS
+    // ========================================================
+
+    if (
+      productLinks.size === 0
+    ) {
+
+      console.log(
+        "Daraz: normal link extraction found 0 URLs, trying raw HTML..."
+      );
+
+      const urlRegex =
+        /https?:\\?\/\\?\/(?:www\.)?daraz\.com\.np\/[^"'\\\s<>]+/gi;
+
+      const matches =
+        html.match(urlRegex) || [];
+
+      for (
+        let link of matches
+      ) {
+
+        link =
+          link
+            .replace(/\\\//g, "/")
+            .replace(/\\u002F/g, "/")
+            .replace(/&amp;/g, "&")
+            .split("?")[0];
+
+        if (
+          link.includes("-i")
+          ||
+          link.includes(".html")
+          ||
+          link.includes("/products/")
+        ) {
+
+          productLinks.add(
+            link
+          );
+
+        }
+
+      }
+
+      console.log(
+        `Daraz: raw HTML found ${productLinks.size} product links`
+      );
+
+    }
+
+    // ========================================================
+    // EXTRACT PRODUCTS
+    // ========================================================
+
+    let count = 0;
+
+    for (
+      const productUrl
+      of productLinks
+    ) {
+
+      // Safety limit
+      if (
+        count >= 20
+      ) {
+        break;
+      }
+
+      try {
+
+        console.log(
+          `Daraz: checking ${productUrl}`
         );
-      })
-      .slice(0, 20);
 
-    console.log(
-      `Daraz: returning ${finalResults.length} results for "${searchTerm}"`
-    );
+        const productResponse =
+          await axios.get(
+            productUrl,
+            {
 
-    return finalResults;
+              timeout: 15000,
+
+              headers: {
+
+                "User-Agent":
+                  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36",
+
+                "Accept":
+                  "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+
+                "Accept-Language":
+                  "en-US,en;q=0.9"
+
+              }
+
+            }
+          );
+
+        const productHtml =
+          productResponse.data;
+
+        const $$ =
+          cheerio.load(
+            productHtml
+          );
+
+        // ====================================================
+        // PRODUCT NAME
+        // ====================================================
+
+        let name = null;
+
+        const nameSelectors = [
+
+          "h1",
+
+          '[data-spm-anchor-id*="title"]',
+
+          ".pdp-mod-product-badge-title",
+
+          ".pdp-product-title",
+
+          '[class*="pdp-product-title"]',
+
+          '[class*="product-title"]',
+
+          'meta[property="og:title"]'
+
+        ];
+
+        for (
+          const selector
+          of nameSelectors
+        ) {
+
+          const element =
+            $$(selector).first();
+
+          if (
+            element.length
+          ) {
+
+            name =
+              element.attr("content")
+              ||
+              element.text();
+
+            name =
+              String(name || "")
+                .replace(/\s+/g, " ")
+                .trim();
+
+            if (
+              name
+            ) {
+              break;
+            }
+
+          }
+
+        }
+
+        // ====================================================
+        // PRICE
+        // ====================================================
+
+        let price = null;
+
+        const priceSelectors = [
+
+          '[data-spm-anchor-id*="price"]',
+
+          ".pdp-price",
+
+          ".pdp-mod-product-price",
+
+          '[class*="pdp-price"]',
+
+          '[class*="price"]',
+
+          'meta[property="product:price:amount"]'
+
+        ];
+
+        for (
+          const selector
+          of priceSelectors
+        ) {
+
+          const elements =
+            $$(selector);
+
+          for (
+            let i = 0;
+            i < elements.length;
+            i++
+          ) {
+
+            const element =
+              elements.eq(i);
+
+            let text =
+              element.attr("content")
+              ||
+              element.text();
+
+            text =
+              String(text || "")
+                .replace(/,/g, "")
+                .trim();
+
+            // NPR price
+            const match =
+              text.match(
+                /(?:Rs\.?|NPR|रु\.?)?\s*(\d{2,9}(?:\.\d{1,2})?)/i
+              );
+
+            if (
+              match
+            ) {
+
+              const value =
+                Number(match[1]);
+
+              if (
+                Number.isFinite(value)
+                &&
+                value > 0
+              ) {
+
+                price =
+                  value;
+
+                break;
+
+              }
+
+            }
+
+          }
+
+          if (
+            price !== null
+          ) {
+            break;
+          }
+
+        }
+
+        // ====================================================
+        // AVAILABILITY
+        // ====================================================
+
+        let availability =
+          "Check store";
+
+        const pageText =
+          $$
+            .text()
+            .toLowerCase();
+
+        if (
+          pageText.includes(
+            "add to cart"
+          )
+          ||
+          pageText.includes(
+            "buy now"
+          )
+        ) {
+
+          availability =
+            "Available";
+
+        }
+
+        if (
+          pageText.includes(
+            "out of stock"
+          )
+          ||
+          pageText.includes(
+            "sold out"
+          )
+        ) {
+
+          availability =
+            "Out of stock";
+
+        }
+
+        // ====================================================
+        // IMAGE
+        // ====================================================
+
+        let image = null;
+
+        const imageElement =
+          $$(
+            'meta[property="og:image"]'
+          ).first();
+
+        if (
+          imageElement.length
+        ) {
+
+          image =
+            imageElement.attr(
+              "content"
+            );
+
+        }
+
+        if (
+          !image
+        ) {
+
+          const img =
+            $$("img")
+              .filter(
+                (i, el) => {
+
+                  const src =
+                    $$(el).attr("src")
+                    ||
+                    $$(el).attr("data-src");
+
+                  return (
+                    src &&
+                    (
+                      src.includes("alicdn")
+                      ||
+                      src.includes("daraz")
+                    )
+                  );
+
+                }
+              )
+              .first();
+
+          if (
+            img.length
+          ) {
+
+            image =
+              img.attr("src")
+              ||
+              img.attr("data-src");
+
+          }
+
+        }
+
+        // ====================================================
+        // PRODUCT VALIDATION
+        // ====================================================
+
+        if (
+          !name
+        ) {
+
+          console.log(
+            "Daraz: product name not found"
+          );
+
+          continue;
+
+        }
+
+        console.log(
+          `Daraz product name: ${name}`
+        );
+
+        console.log(
+          `Daraz product price: ${price}`
+        );
+
+        // ----------------------------------------------------
+        // Search relevance
+        // ----------------------------------------------------
+
+        const normalizedName =
+          name.toLowerCase();
+
+        const normalizedQuery =
+          String(searchTerm)
+            .toLowerCase()
+            .trim();
+
+        const queryWords =
+          normalizedQuery
+            .split(/\s+/)
+            .filter(
+              word =>
+                word.length >= 2
+            );
+
+        const matches =
+          queryWords.some(
+            word =>
+              normalizedName.includes(
+                word
+              )
+          );
+
+        if (
+          !matches
+        ) {
+
+          console.log(
+            `Daraz: "${name}" did not match "${searchTerm}"`
+          );
+
+          continue;
+
+        }
+
+        // ====================================================
+        // RESULT
+        // ====================================================
+
+        results.push({
+
+          name,
+
+          store:
+            "Daraz Nepal",
+
+          price,
+
+          shipping:
+            0,
+
+          total:
+            price,
+
+          availability,
+
+          url:
+            productUrl,
+
+          image,
+
+          source:
+            "Daraz Nepal",
+
+          lastUpdated:
+            new Date().toISOString()
+
+        });
+
+        count++;
+
+      } catch (error) {
+
+        console.error(
+          `Daraz product error: ${error.message}`
+        );
+
+      }
+
+    }
+
   } catch (error) {
+
     console.error(
-      `Daraz search error: ${error.message}`
+      "Daraz search error:",
+      error.message
     );
 
-    return [];
   }
+
+  console.log(
+    `Daraz: returning ${results.length} results for "${searchTerm}"`
+  );
+
+  return results;
+
 }
 
-module.exports = searchDaraz;
+// ============================================================
+// EXPORT
+// ============================================================
+
+module.exports =
+  searchDaraz;
