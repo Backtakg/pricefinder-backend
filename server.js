@@ -5,6 +5,10 @@ const {
   searchAllStores
 } = require("./stores/index");
 
+// ============================================================
+// EXISTING STORES
+// ============================================================
+
 const searchNeptronics =
   require("./stores/neptronics");
 
@@ -25,6 +29,44 @@ const searchDaraz =
 
 const searchStarHifi =
   require("./stores/starhifi");
+
+// ============================================================
+// NEW STORES
+// ============================================================
+
+const searchMaxell =
+  require("./stores/maxell");
+
+const searchNCS =
+  require("./stores/ncs");
+
+const searchAPLComputer =
+  require("./stores/aplcomputer");
+
+const searchMultronics =
+  require("./stores/multronics");
+
+const searchONIN =
+  require("./stores/onin");
+
+const searchNationalMobile =
+  require("./stores/nationalmobile");
+
+const searchAcrotech =
+  require("./stores/acrotech");
+
+const searchMudita =
+  require("./stores/mudita");
+
+const searchMegatech =
+  require("./stores/megatech");
+
+const searchComputerDurbar =
+  require("./stores/computerdurbar");
+
+// ============================================================
+// EXPRESS APP
+// ============================================================
 
 const app = express();
 
@@ -63,10 +105,11 @@ app.use((req, res, next) => {
   }
 
   next();
+
 });
 
 // ============================================================
-// REGISTER STORES
+// REGISTER EXISTING STORES
 // ============================================================
 
 registerStore(
@@ -105,17 +148,99 @@ registerStore(
 );
 
 // ============================================================
+// REGISTER NEW STORES
+// ============================================================
+
+registerStore(
+  "Maxell",
+  searchMaxell
+);
+
+registerStore(
+  "NCS",
+  searchNCS
+);
+
+registerStore(
+  "APL Computer",
+  searchAPLComputer
+);
+
+registerStore(
+  "Multronics",
+  searchMultronics
+);
+
+registerStore(
+  "ONIN Infosys",
+  searchONIN
+);
+
+registerStore(
+  "National Mobile",
+  searchNationalMobile
+);
+
+registerStore(
+  "Acrotech",
+  searchAcrotech
+);
+
+registerStore(
+  "Mudita Store",
+  searchMudita
+);
+
+registerStore(
+  "Megatech",
+  searchMegatech
+);
+
+registerStore(
+  "Computer Durbar",
+  searchComputerDurbar
+);
+
+// ============================================================
 // STORE NAMES
 // ============================================================
 
 const STORE_NAMES = [
+
   "Neptronics",
+
   "Bigbyte IT World",
+
   "IT Monster",
+
   "Xiaomi Nepal",
+
   "Samsung Nepal",
+
   "Daraz Nepal",
-  "Star HiFi"
+
+  "Star HiFi",
+
+  "Maxell",
+
+  "NCS",
+
+  "APL Computer",
+
+  "Multronics",
+
+  "ONIN Infosys",
+
+  "National Mobile",
+
+  "Acrotech",
+
+  "Mudita Store",
+
+  "Megatech",
+
+  "Computer Durbar"
+
 ];
 
 // ============================================================
@@ -130,6 +255,9 @@ app.get("/", (req, res) => {
 
     message:
       "PriceFinder backend is running 🚀",
+
+    count:
+      STORE_NAMES.length,
 
     stores:
       STORE_NAMES
@@ -215,7 +343,7 @@ app.get(
             Number.isFinite(priceB) &&
             priceB > 0;
 
-          // Products with no valid price go last
+          // Products without a valid price go last
           if (!validA && !validB) {
             return 0;
           }
@@ -245,6 +373,9 @@ app.get(
         success: true,
 
         query,
+
+        storeCount:
+          STORE_NAMES.length,
 
         count:
           sortedResults.length,
@@ -302,6 +433,9 @@ app.get(
       message:
         "PriceFinder API is healthy 🚀",
 
+      storeCount:
+        STORE_NAMES.length,
+
       stores:
         STORE_NAMES
 
@@ -326,32 +460,16 @@ app.listen(
       "Stores loaded:"
     );
 
-    console.log(
-      "✓ Neptronics"
+    STORE_NAMES.forEach(
+      (store) => {
+        console.log(
+          `✓ ${store}`
+        );
+      }
     );
 
     console.log(
-      "✓ Bigbyte IT World"
-    );
-
-    console.log(
-      "✓ IT Monster"
-    );
-
-    console.log(
-      "✓ Xiaomi Nepal"
-    );
-
-    console.log(
-      "✓ Samsung Nepal"
-    );
-
-    console.log(
-      "✓ Daraz Nepal"
-    );
-
-    console.log(
-      "✓ Star HiFi"
+      `Total stores: ${STORE_NAMES.length}`
     );
 
   }
