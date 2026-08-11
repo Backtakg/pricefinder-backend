@@ -6,14 +6,11 @@ const {
 } = require("./stores/index");
 
 // ============================================================
-// EXISTING STORES
+// STORES
 // ============================================================
 
 const searchNeptronics =
   require("./stores/neptronics");
-
-const searchBigbyte =
-  require("./stores/bigbyte");
 
 const searchITMonster =
   require("./stores/itmonster");
@@ -23,9 +20,6 @@ const searchXiaomiNepal =
 
 const searchSamsung =
   require("./stores/samsung");
-
-const searchDaraz =
-  require("./stores/daraz");
 
 const searchStarHifi =
   require("./stores/starhifi");
@@ -49,20 +43,11 @@ const searchMultronics =
 const searchONIN =
   require("./stores/onin");
 
-const searchNationalMobile =
-  require("./stores/nationalmobile");
-
 const searchAcrotech =
   require("./stores/acrotech");
 
-const searchMudita =
-  require("./stores/mudita");
-
 const searchMegatech =
   require("./stores/megatech");
-
-const searchComputerDurbar =
-  require("./stores/computerdurbar");
 
 // ============================================================
 // EXPRESS APP
@@ -77,49 +62,52 @@ const PORT =
 // MIDDLEWARE
 // ============================================================
 
-app.use(express.json());
+app.use(
+  express.json()
+);
 
 // ============================================================
 // CORS
 // ============================================================
 
-app.use((req, res, next) => {
+app.use(
+  (req, res, next) => {
 
-  res.header(
-    "Access-Control-Allow-Origin",
-    "*"
-  );
+    res.header(
+      "Access-Control-Allow-Origin",
+      "*"
+    );
 
-  res.header(
-    "Access-Control-Allow-Methods",
-    "GET,POST,PUT,DELETE,OPTIONS"
-  );
+    res.header(
+      "Access-Control-Allow-Methods",
+      "GET,POST,PUT,DELETE,OPTIONS"
+    );
 
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Content-Type"
-  );
+    res.header(
+      "Access-Control-Allow-Headers",
+      "Content-Type"
+    );
 
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+    if (
+      req.method === "OPTIONS"
+    ) {
+
+      return res.sendStatus(204);
+
+    }
+
+    next();
+
   }
-
-  next();
-
-});
+);
 
 // ============================================================
-// REGISTER EXISTING STORES
+// REGISTER STORES
 // ============================================================
 
 registerStore(
   "Neptronics",
   searchNeptronics
-);
-
-registerStore(
-  "Bigbyte IT World",
-  searchBigbyte
 );
 
 registerStore(
@@ -138,18 +126,9 @@ registerStore(
 );
 
 registerStore(
-  "Daraz Nepal",
-  searchDaraz
-);
-
-registerStore(
   "Star HiFi",
   searchStarHifi
 );
-
-// ============================================================
-// REGISTER NEW STORES
-// ============================================================
 
 registerStore(
   "Maxell",
@@ -177,28 +156,13 @@ registerStore(
 );
 
 registerStore(
-  "National Mobile",
-  searchNationalMobile
-);
-
-registerStore(
   "Acrotech",
   searchAcrotech
 );
 
 registerStore(
-  "Mudita Store",
-  searchMudita
-);
-
-registerStore(
   "Megatech",
   searchMegatech
-);
-
-registerStore(
-  "Computer Durbar",
-  searchComputerDurbar
 );
 
 // ============================================================
@@ -209,15 +173,11 @@ const STORE_NAMES = [
 
   "Neptronics",
 
-  "Bigbyte IT World",
-
   "IT Monster",
 
   "Xiaomi Nepal",
 
   "Samsung Nepal",
-
-  "Daraz Nepal",
 
   "Star HiFi",
 
@@ -231,15 +191,9 @@ const STORE_NAMES = [
 
   "ONIN Infosys",
 
-  "National Mobile",
-
   "Acrotech",
 
-  "Mudita Store",
-
-  "Megatech",
-
-  "Computer Durbar"
+  "Megatech"
 
 ];
 
@@ -247,24 +201,27 @@ const STORE_NAMES = [
 // HOME
 // ============================================================
 
-app.get("/", (req, res) => {
+app.get(
+  "/",
+  (req, res) => {
 
-  res.json({
+    res.json({
 
-    success: true,
+      success: true,
 
-    message:
-      "PriceFinder backend is running 🚀",
+      message:
+        "PriceFinder backend is running 🚀",
 
-    count:
-      STORE_NAMES.length,
+      count:
+        STORE_NAMES.length,
 
-    stores:
-      STORE_NAMES
+      stores:
+        STORE_NAMES
 
-  });
+    });
 
-});
+  }
+);
 
 // ============================================================
 // SEARCH API
@@ -301,7 +258,7 @@ app.get(
     }
 
     // --------------------------------------------------------
-    // SEARCH ALL STORES
+    // SEARCH
     // --------------------------------------------------------
 
     try {
@@ -319,46 +276,82 @@ app.get(
         STORE_NAMES.join(", ")
       );
 
+      // ------------------------------------------------------
+      // SEARCH ALL STORES
+      // ------------------------------------------------------
+
       const results =
         await searchAllStores(query);
 
       // ------------------------------------------------------
-      // SORT LOWEST PRICE FIRST
+      // SAFETY
+      // ------------------------------------------------------
+
+      const safeResults =
+        Array.isArray(results)
+          ? results.filter(
+              result =>
+                result &&
+                typeof result === "object"
+            )
+          : [];
+
+      // ------------------------------------------------------
+      // SORT BY PRICE
       // ------------------------------------------------------
 
       const sortedResults =
-        results.sort((a, b) => {
+        safeResults.sort(
+          (a, b) => {
 
-          const priceA =
-            Number(a.total);
+            const priceA =
+              Number(a.total);
 
-          const priceB =
-            Number(b.total);
+            const priceB =
+              Number(b.total);
 
-          const validA =
-            Number.isFinite(priceA) &&
-            priceA > 0;
+            const validA =
+              Number.isFinite(priceA) &&
+              priceA > 0;
 
-          const validB =
-            Number.isFinite(priceB) &&
-            priceB > 0;
+            const validB =
+              Number.isFinite(priceB) &&
+              priceB > 0;
 
-          // Products without a valid price go last
-          if (!validA && !validB) {
-            return 0;
+            // Both invalid
+            if (
+              !validA &&
+              !validB
+            ) {
+
+              return 0;
+
+            }
+
+            // A invalid
+            if (!validA) {
+
+              return 1;
+
+            }
+
+            // B invalid
+            if (!validB) {
+
+              return -1;
+
+            }
+
+            return (
+              priceA - priceB
+            );
+
           }
+        );
 
-          if (!validA) {
-            return 1;
-          }
-
-          if (!validB) {
-            return -1;
-          }
-
-          return priceA - priceB;
-
-        });
+      // ------------------------------------------------------
+      // LOG
+      // ------------------------------------------------------
 
       console.log(
         `Search complete: ${sortedResults.length} results`
@@ -368,24 +361,39 @@ app.get(
         "=========================================="
       );
 
+      // ------------------------------------------------------
+      // RESPONSE
+      // ------------------------------------------------------
+
       return res.json({
 
         success: true,
 
-        query,
+        query:
+
+          query,
 
         storeCount:
+
           STORE_NAMES.length,
 
         count:
+
           sortedResults.length,
 
         results:
+
           sortedResults
 
       });
 
-    } catch (error) {
+    }
+
+    // --------------------------------------------------------
+    // ERROR
+    // --------------------------------------------------------
+
+    catch (error) {
 
       console.error(
         "Search error:",
@@ -400,10 +408,15 @@ app.get(
 
         success: false,
 
-        query,
+        query:
+
+          query,
 
         error:
           "Search failed.",
+
+        storeCount:
+          STORE_NAMES.length,
 
         count: 0,
 
@@ -428,7 +441,8 @@ app.get(
 
       success: true,
 
-      status: "online",
+      status:
+        "online",
 
       message:
         "PriceFinder API is healthy 🚀",
@@ -462,9 +476,11 @@ app.listen(
 
     STORE_NAMES.forEach(
       (store) => {
+
         console.log(
           `✓ ${store}`
         );
+
       }
     );
 
