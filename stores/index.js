@@ -29,6 +29,114 @@ function registerStore(name, searchFunction) {
 }
 
 // ============================================================
+// NORMALIZE TEXT
+// ============================================================
+
+function normalizeText(value) {
+
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+}
+
+// ============================================================
+// CHECK PRODUCT RELEVANCE
+// ============================================================
+
+function isRelevantProduct(product, query) {
+
+  if (!product) {
+    return false;
+  }
+
+  const searchText =
+    normalizeText(query);
+
+  if (!searchText) {
+    return true;
+  }
+
+  const productText =
+    normalizeText(
+      [
+        product.name,
+        product.title,
+        product.description,
+        product.category,
+        product.brand
+      ].join(" ")
+    );
+
+  // ----------------------------------------------------------
+  // Exact full query
+  // ----------------------------------------------------------
+
+  if (
+    productText.includes(searchText)
+  ) {
+    return true;
+  }
+
+  // ----------------------------------------------------------
+  // Check individual search words
+  // ----------------------------------------------------------
+
+  const words =
+    searchText
+      .split(" ")
+      .filter(
+        word => word.length >= 2
+      );
+
+  if (!words.length) {
+    return false;
+  }
+
+  // At least one meaningful search word must match
+  return words.some(
+    word =>
+      productText.includes(word)
+  );
+
+}
+
+// ============================================================
+// FILTER STORE RESULTS
+// ============================================================
+
+function filterResults(
+  storeResults,
+  query,
+  storeName
+) {
+
+  if (
+    !Array.isArray(storeResults)
+  ) {
+    return [];
+  }
+
+  const filtered =
+    storeResults.filter(
+      product =>
+        isRelevantProduct(
+          product,
+          query
+        )
+    );
+
+  console.log(
+    `[${storeName}] ${storeResults.length} found → ${filtered.length} relevant`
+  );
+
+  return filtered;
+
+}
+
+// ============================================================
 // SEARCH ALL STORES
 // ============================================================
 
@@ -49,7 +157,7 @@ async function searchAllStores(query) {
   );
 
   // ----------------------------------------------------------
-  // Run stores one by one
+  // SEARCH EVERY STORE
   // ----------------------------------------------------------
 
   for (
@@ -63,44 +171,27 @@ async function searchAllStores(query) {
     try {
 
       console.log(
-        `\n[${storeName}] Starting search...`
+        `\n[${storeName}] Searching for "${query}"...`
       );
 
       const storeResults =
         await searchFunction(query);
 
-      // ------------------------------------------------------
-      // Validate results
-      // ------------------------------------------------------
-
-      if (
-        Array.isArray(storeResults)
-      ) {
-
-        results.push(
-          ...storeResults
+      const relevantResults =
+        filterResults(
+          storeResults,
+          query,
+          storeName
         );
 
-        console.log(
-          `[${storeName}] ✓ ${storeResults.length} results`
-        );
-
-      } else {
-
-        console.log(
-          `[${storeName}] ⚠ Invalid result`
-        );
-
-      }
+      results.push(
+        ...relevantResults
+      );
 
     } catch (error) {
 
-      // ------------------------------------------------------
-      // Store failure should NOT stop other stores
-      // ------------------------------------------------------
-
       console.error(
-        `[${storeName}] ✗ Search failed:`,
+        `[${storeName}] Search failed:`,
         error.message
       );
 
@@ -149,6 +240,44 @@ async function searchAllStores(query) {
   }
 
   // ==========================================================
+  // SORT BY PRICE
+  // ==========================================================
+
+  uniqueResults.sort(
+    (a, b) => {
+
+      const priceA =
+        Number(a.total);
+
+      const priceB =
+        Number(b.total);
+
+      const validA =
+        Number.isFinite(priceA) &&
+        priceA > 0;
+
+      const validB =
+        Number.isFinite(priceB) &&
+        priceB > 0;
+
+      if (!validA && !validB) {
+        return 0;
+      }
+
+      if (!validA) {
+        return 1;
+      }
+
+      if (!validB) {
+        return -1;
+      }
+
+      return priceA - priceB;
+
+    }
+  );
+
+  // ==========================================================
   // COMPLETE
   // ==========================================================
 
@@ -157,7 +286,7 @@ async function searchAllStores(query) {
   );
 
   console.log(
-    `Total results: ${uniqueResults.length}`
+    `Total relevant results: ${uniqueResults.length}`
   );
 
   console.log(
@@ -165,6 +294,7 @@ async function searchAllStores(query) {
   );
 
   return uniqueResults;
+
 }
 
 // ============================================================
@@ -173,9 +303,7 @@ async function searchAllStores(query) {
 
 function getRegisteredStores() {
 
-  return Object.keys(
-    stores
-  );
+  return Object.keys(stores);
 
 }
 
