@@ -18,6 +18,7 @@ const searchXiaomiNepal =
   require("./stores/xiaominepal");
 const searchSamsung = require("./stores/samsung");
 const searchDaraz = require("./stores/daraz");
+const searchStarHifi = require("./stores/starhifi");
 
 
 const app = express();
@@ -100,8 +101,10 @@ registerStore(
   "Daraz Nepal",
   searchDaraz
 );
-
-
+registerStore(
+  "Star HiFi",
+  searchStarHifi
+  };
 // ============================================================
 // HOME
 // ============================================================
@@ -123,7 +126,8 @@ app.get(
         "IT Monster",
         "Xiaomi Nepal",
         "Samsung Nepal",
-        "Daraz Nepal"
+        "Daraz Nepal",
+        "Star Hifi"
       ]
 
     });
@@ -184,7 +188,7 @@ app.get(
 
       console.log(
         "Stores:",
-        "Neptronics, Bigbyte IT World, IT Monster, Xiaomi Nepal, Daraz Nepal"
+        "Neptronics, Bigbyte IT World, IT Monster, Xiaomi Nepal, Daraz Nepal, Star Hifi"
       );
 
 
@@ -331,6 +335,9 @@ app.listen(
     console.log(
       "✓ Xiaomi Nepal"
     );
+    console.log(
+      "✓ Star Hifi"
+      };
 
   }
 );
