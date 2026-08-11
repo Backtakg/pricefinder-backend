@@ -16,59 +16,54 @@ const searchITMonster =
 
 const searchXiaomiNepal =
   require("./stores/xiaominepal");
-const searchSamsung = require("./stores/samsung");
-const searchDaraz = require("./stores/daraz");
-const searchStarHifi = require("./stores/starhifi");
 
+const searchSamsung =
+  require("./stores/samsung");
+
+const searchDaraz =
+  require("./stores/daraz");
+
+const searchStarHifi =
+  require("./stores/starhifi");
 
 const app = express();
 
 const PORT =
   process.env.PORT || 3000;
 
-
 // ============================================================
 // MIDDLEWARE
 // ============================================================
 
-app.use(
-  express.json()
-);
-
+app.use(express.json());
 
 // ============================================================
 // CORS
 // ============================================================
 
-app.use(
-  (req, res, next) => {
+app.use((req, res, next) => {
 
-    res.header(
-      "Access-Control-Allow-Origin",
-      "*"
-    );
+  res.header(
+    "Access-Control-Allow-Origin",
+    "*"
+  );
 
-    res.header(
-      "Access-Control-Allow-Methods",
-      "GET,POST,PUT,DELETE,OPTIONS"
-    );
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,DELETE,OPTIONS"
+  );
 
-    res.header(
-      "Access-Control-Allow-Headers",
-      "Content-Type"
-    );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
 
-    if (
-      req.method === "OPTIONS"
-    ) {
-      return res.sendStatus(204);
-    }
-
-    next();
-
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
   }
-);
 
+  next();
+});
 
 // ============================================================
 // REGISTER STORES
@@ -93,48 +88,55 @@ registerStore(
   "Xiaomi Nepal",
   searchXiaomiNepal
 );
+
 registerStore(
   "Samsung Nepal",
   searchSamsung
 );
+
 registerStore(
   "Daraz Nepal",
   searchDaraz
 );
+
 registerStore(
   "Star HiFi",
- searchStarHifi
-  );
+  searchStarHifi
+);
+
+// ============================================================
+// STORE NAMES
+// ============================================================
+
+const STORE_NAMES = [
+  "Neptronics",
+  "Bigbyte IT World",
+  "IT Monster",
+  "Xiaomi Nepal",
+  "Samsung Nepal",
+  "Daraz Nepal",
+  "Star HiFi"
+];
+
 // ============================================================
 // HOME
 // ============================================================
 
-app.get(
-  "/",
-  (req, res) => {
+app.get("/", (req, res) => {
 
-    res.json({
+  res.json({
 
-      success: true,
+    success: true,
 
-      message:
-        "PriceFinder backend is running 🚀",
+    message:
+      "PriceFinder backend is running 🚀",
 
-      stores: [
-        "Neptronics",
-        "Bigbyte IT World",
-        "IT Monster",
-        "Xiaomi Nepal",
-        "Samsung Nepal",
-        "Daraz Nepal",
-        "Star Hifi"
-      ]
+    stores:
+      STORE_NAMES
 
-    });
+  });
 
-  }
-);
-
+});
 
 // ============================================================
 // SEARCH API
@@ -148,7 +150,6 @@ app.get(
       String(
         req.query.q || ""
       ).trim();
-
 
     // --------------------------------------------------------
     // EMPTY QUERY
@@ -171,9 +172,8 @@ app.get(
 
     }
 
-
     // --------------------------------------------------------
-    // SEARCH
+    // SEARCH ALL STORES
     // --------------------------------------------------------
 
     try {
@@ -188,45 +188,49 @@ app.get(
 
       console.log(
         "Stores:",
-        "Neptronics, Bigbyte IT World, IT Monster, Xiaomi Nepal, Daraz Nepal, Star Hifi"
+        STORE_NAMES.join(", ")
       );
-
 
       const results =
         await searchAllStores(query);
-
 
       // ------------------------------------------------------
       // SORT LOWEST PRICE FIRST
       // ------------------------------------------------------
 
       const sortedResults =
-        results.sort(
-          (a, b) => {
+        results.sort((a, b) => {
 
-            const priceA =
-              Number.isFinite(
-                Number(a.total)
-              )
-                ? Number(a.total)
-                : Infinity;
+          const priceA =
+            Number(a.total);
 
+          const priceB =
+            Number(b.total);
 
-            const priceB =
-              Number.isFinite(
-                Number(b.total)
-              )
-                ? Number(b.total)
-                : Infinity;
+          const validA =
+            Number.isFinite(priceA) &&
+            priceA > 0;
 
+          const validB =
+            Number.isFinite(priceB) &&
+            priceB > 0;
 
-            return (
-              priceA - priceB
-            );
-
+          // Products with no valid price go last
+          if (!validA && !validB) {
+            return 0;
           }
-        );
 
+          if (!validA) {
+            return 1;
+          }
+
+          if (!validB) {
+            return -1;
+          }
+
+          return priceA - priceB;
+
+        });
 
       console.log(
         `Search complete: ${sortedResults.length} results`
@@ -236,12 +240,11 @@ app.get(
         "=========================================="
       );
 
-
       return res.json({
 
         success: true,
 
-        query: query,
+        query,
 
         count:
           sortedResults.length,
@@ -251,7 +254,6 @@ app.get(
 
       });
 
-
     } catch (error) {
 
       console.error(
@@ -259,12 +261,15 @@ app.get(
         error
       );
 
+      console.log(
+        "=========================================="
+      );
 
       return res.status(500).json({
 
         success: false,
 
-        query: query,
+        query,
 
         error:
           "Search failed.",
@@ -279,7 +284,6 @@ app.get(
 
   }
 );
-
 
 // ============================================================
 // HEALTH CHECK
@@ -296,13 +300,15 @@ app.get(
       status: "online",
 
       message:
-        "PriceFinder API is healthy 🚀"
+        "PriceFinder API is healthy 🚀",
+
+      stores:
+        STORE_NAMES
 
     });
 
   }
 );
-
 
 // ============================================================
 // START SERVER
@@ -335,9 +341,18 @@ app.listen(
     console.log(
       "✓ Xiaomi Nepal"
     );
+
     console.log(
-      "✓ Star Hifi"
-      );
+      "✓ Samsung Nepal"
+    );
+
+    console.log(
+      "✓ Daraz Nepal"
+    );
+
+    console.log(
+      "✓ Star HiFi"
+    );
 
   }
 );
